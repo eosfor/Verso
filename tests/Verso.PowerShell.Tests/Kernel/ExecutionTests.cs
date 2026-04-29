@@ -51,6 +51,29 @@ public class ExecutionTests
     }
 
     [TestMethod]
+    [Timeout(10000)]
+    public async Task Cancellation_StopsLongRunningCommandAndKeepsKernelUsable()
+    {
+        using var cts = new CancellationTokenSource();
+        _context.CancellationToken = cts.Token;
+
+        var execution = Task.Run(() => _kernel.ExecuteAsync(
+            "Start-Sleep -Seconds 30",
+            _context));
+
+        await Task.Delay(500);
+        cts.Cancel();
+
+        await Assert.ThrowsExceptionAsync<OperationCanceledException>(async () =>
+            await execution);
+
+        var nextContext = new StubExecutionContext();
+        var outputs = await _kernel.ExecuteAsync("1 + 1", nextContext);
+        var allText = string.Join(" ", outputs.Select(o => o.Content));
+        Assert.IsTrue(allText.Contains("2"), $"Expected kernel to remain usable, got: {allText}");
+    }
+
+    [TestMethod]
     public async Task WriteError_ReturnsErrorOutput()
     {
         var outputs = await _kernel.ExecuteAsync("Write-Error 'something failed'", _context);

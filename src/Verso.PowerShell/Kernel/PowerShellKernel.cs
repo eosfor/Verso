@@ -73,6 +73,8 @@ public sealed class PowerShellKernel : ILanguageKernel
             }
 
             var result = _runspaceManager!.Invoke(code, context.CancellationToken);
+            context.CancellationToken.ThrowIfCancellationRequested();
+
             var outputs = new List<CellOutput>();
 
             // Output stream (objects)
