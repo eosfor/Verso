@@ -59,6 +59,7 @@
                                    Cells="GetLayoutFilteredCells()"
                                    ExecutingCellId="_executingCellId"
                                    OnRunCell="HandleRunCell"
+                                   OnCancelCell="HandleCancelCell"
                                    OnSourceChanged="HandleSourceChanged" />
                 }
                 else if (Service.ActiveLayoutId == "presentation")
@@ -108,6 +109,7 @@
                                       IsSectionCollapsed="isSectionCollapsed"
                                       OnToggleSection="HandleToggleSection"
                                       OnRunCell="HandleRunCell"
+                                      OnCancelCell="HandleCancelCell"
                                       OnDeleteCell="HandleDeleteCell"
                                       OnSelect="HandleSelectCell"
                                       OnMoveUp="HandleMoveUp"
@@ -603,6 +605,18 @@
         catch (Exception ex)
         {
             _error = $"Execution error: {ex.Message}";
+        }
+    }
+
+    private async Task HandleCancelCell(Guid cellId)
+    {
+        try
+        {
+            await Service.CancelExecutionAsync();
+        }
+        catch (Exception ex)
+        {
+            _error = $"Cancel failed: {ex.Message}";
         }
     }
 

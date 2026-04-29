@@ -76,6 +76,39 @@ public class ExecutionTests
     }
 
     [TestMethod]
+    [Timeout(10000)]
+    public async Task Cancellation_StopsLongRunningCommandAndKeepsKernelUsable()
+    {
+        using var cts = new CancellationTokenSource();
+        _context.CancellationToken = cts.Token;
+
+        var execution = Task.Run(() => _kernel.ExecuteAsync(
+            "Write-Host 'before'\nStart-Sleep -Seconds 30\nWrite-Host 'after'",
+            _context));
+
+        var deadline = DateTimeOffset.UtcNow.AddSeconds(2);
+        while (DateTimeOffset.UtcNow < deadline &&
+               !_context.WrittenOutputs.Any(o => o.Content.Contains("before")))
+        {
+            await Task.Delay(25);
+        }
+
+        Assert.IsTrue(
+            _context.WrittenOutputs.Any(o => o.Content.Contains("before")),
+            "Expected first host output before cancellation.");
+
+        cts.Cancel();
+
+        await Assert.ThrowsExceptionAsync<OperationCanceledException>(async () =>
+            await execution);
+
+        var nextContext = new StubExecutionContext();
+        var outputs = await _kernel.ExecuteAsync("1 + 1", nextContext);
+        var allText = string.Join(" ", outputs.Select(o => o.Content));
+        Assert.IsTrue(allText.Contains("2"), $"Expected kernel to remain usable, got: {allText}");
+    }
+
+    [TestMethod]
     public async Task WriteHost_StripsAnsiEscapeSequences()
     {
         var outputs = await _kernel.ExecuteAsync(

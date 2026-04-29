@@ -121,6 +121,46 @@ public sealed class CellTests : BunitTestContext
     }
 
     [TestMethod]
+    public void StopButton_VisibleForExecutingPowerShellCell()
+    {
+        var cell = CreateCodeCell("Start-Sleep -Seconds 120");
+        cell.Language = "powershell";
+
+        var cut = RenderCell(cell, isExecuting: true);
+
+        Assert.AreEqual(1, cut.FindAll("button[title='Stop']").Count);
+        Assert.AreEqual(0, cut.FindAll("button[title='Run']").Count);
+    }
+
+    [TestMethod]
+    public void StopButton_HiddenForExecutingNonPowerShellCell()
+    {
+        var cell = CreateCodeCell("await Task.Delay(120000);");
+
+        var cut = RenderCell(cell, isExecuting: true);
+
+        Assert.AreEqual(0, cut.FindAll("button[title='Stop']").Count);
+        Assert.AreEqual(1, cut.FindAll("button[title='Run']").Count);
+    }
+
+    [TestMethod]
+    public void StopButton_ClickInvokesCancelCallback()
+    {
+        var cell = CreateCodeCell("Start-Sleep -Seconds 120");
+        cell.Language = "powershell";
+        Guid? cancelledCellId = null;
+
+        var cut = RenderCell(
+            cell,
+            isExecuting: true,
+            onCancelCell: id => cancelledCellId = id);
+
+        cut.Find("button[title='Stop']").Click();
+
+        Assert.AreEqual(cell.Id, cancelledCellId);
+    }
+
+    [TestMethod]
     public void Outputs_Rendered_WhenPresent()
     {
         var cell = CreateCodeCell("print('hello')");
@@ -207,7 +247,8 @@ public sealed class CellTests : BunitTestContext
         bool isSelected = false,
         bool isExecuting = false,
         int index = 0,
-        bool isLast = false)
+        bool isLast = false,
+        Action<Guid>? onCancelCell = null)
     {
         // Set up JS interop stub for MonacoEditor
         TestContext!.JSInterop.SetupVoid("versoMonaco.create", _ => true);
@@ -220,6 +261,7 @@ public sealed class CellTests : BunitTestContext
             .Add(c => c.IsSelected, isSelected)
             .Add(c => c.IsExecuting, isExecuting)
             .Add(c => c.Index, index)
-            .Add(c => c.IsLast, isLast));
+            .Add(c => c.IsLast, isLast)
+            .Add(c => c.OnCancelCell, id => onCancelCell?.Invoke(id)));
     }
 }

@@ -101,6 +101,8 @@ public sealed class PowerShellKernel : ILanguageKernel
                 AppendHostOutput,
                 RequestHostInput);
 
+            context.CancellationToken.ThrowIfCancellationRequested();
+
             // Output stream (objects)
             if (result.OutputLines.Count > 0)
             {
