@@ -435,6 +435,11 @@ public sealed class ServerNotebookService : INotebookService, IAsyncDisposable
             new ExecutionResultDto(r.CellId, r.Status.ToString(), r.ExecutionCount, r.Elapsed)).ToList();
     }
 
+    public Task CancelExecutionAsync()
+    {
+        return Task.CompletedTask;
+    }
+
     public async Task RestartKernelAsync()
     {
         if (_scaffold is null) return;

@@ -410,6 +410,11 @@ public sealed class RemoteNotebookService : INotebookService, IAsyncDisposable
         return dtos;
     }
 
+    public async Task CancelExecutionAsync()
+    {
+        await _bridge.RequestVoidAsync("execution/cancel", null);
+    }
+
     public async Task RestartKernelAsync()
     {
         await _bridge.RequestVoidAsync("kernel/restart", null);

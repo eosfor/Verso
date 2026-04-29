@@ -83,6 +83,7 @@ public sealed class FakeNotebookService : INotebookService
     public List<string> AddCellCalls { get; } = new();
     public List<Guid> ExecutedCellIds { get; } = new();
     public int ExecuteAllCallCount { get; private set; }
+    public int CancelExecutionCallCount { get; private set; }
     public int RestartKernelCallCount { get; private set; }
     public int NewNotebookCallCount { get; private set; }
     public int SaveCallCount { get; private set; }
@@ -165,6 +166,12 @@ public sealed class FakeNotebookService : INotebookService
     {
         ExecuteAllCallCount++;
         return Task.FromResult<IReadOnlyList<ExecutionResultDto>>(new List<ExecutionResultDto>());
+    }
+
+    public Task CancelExecutionAsync()
+    {
+        CancelExecutionCallCount++;
+        return Task.CompletedTask;
     }
 
     public Task RestartKernelAsync()
