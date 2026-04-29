@@ -365,6 +365,12 @@ public sealed class Scaffold : IAsyncDisposable
     /// </summary>
     public event Action<Guid>? OnCellExecuted;
 
+    /// <summary>
+    /// Raised when a cell receives output during execution before the cell has
+    /// completed. Remote front-ends use this to refresh running cell output.
+    /// </summary>
+    public event Action<Guid>? OnCellOutputUpdated;
+
     public async Task<ExecutionResult> ExecuteCellAsync(Guid cellId, CancellationToken ct = default)
     {
         // Ensure parameter defaults are in the variable store before any cell runs
@@ -688,6 +694,7 @@ public sealed class Scaffold : IAsyncDisposable
             EnsureInitialized,
             ResolveLanguageId,
             GetExecutionCount,
-            ResolveMagicCommand);
+            ResolveMagicCommand,
+            id => OnCellOutputUpdated?.Invoke(id));
     }
 }
