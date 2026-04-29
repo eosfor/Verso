@@ -76,14 +76,43 @@ public class ExecutionTests
     }
 
     [TestMethod]
-    public async Task ReadHost_ReturnsUnsupportedInteractiveInputError()
+    public async Task WriteHost_StripsAnsiEscapeSequences()
+    {
+        var outputs = await _kernel.ExecuteAsync(
+            "Write-Host \"$([char]27)[93mcolored$([char]27)[0m\"",
+            _context);
+
+        var allText = string.Join(" ", outputs.Select(o => o.Content));
+        Assert.IsTrue(allText.Contains("colored"), $"Expected colored text, got: {allText}");
+        Assert.IsFalse(allText.Contains("\u001b["), $"Did not expect ANSI escape sequences, got: {allText}");
+    }
+
+    [TestMethod]
+    public async Task ReadHost_UsesExecutionContextInput()
+    {
+        _context.InputHandler = (prompt, isPassword, ct) =>
+            Task.FromResult<string?>("typed value");
+
+        var outputs = await _kernel.ExecuteAsync(
+            "$value = Read-Host 'enter value'\nWrite-Host \"value=$value\"",
+            _context);
+
+        Assert.IsFalse(outputs.Any(o => o.IsError), "Did not expect an error output");
+        var allText = string.Join(" ", outputs.Select(o => o.Content));
+        Assert.IsTrue(
+            allText.Contains("value=typed value"),
+            $"Expected provided input in output, got: {allText}");
+    }
+
+    [TestMethod]
+    public async Task ReadHost_ReturnsUnsupportedInteractiveInputErrorWithoutInputHandler()
     {
         var outputs = await _kernel.ExecuteAsync("Read-Host 'enter value'", _context);
 
         Assert.IsTrue(outputs.Any(o => o.IsError), "Expected an error output");
         var allText = string.Join(" ", outputs.Select(o => o.Content));
         Assert.IsTrue(
-            allText.Contains("Interactive PowerShell input is not supported by Verso yet."),
+            allText.Contains("Interactive input is not supported by this host."),
             $"Expected unsupported interactive input message, got: {allText}");
     }
 

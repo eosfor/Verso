@@ -27,6 +27,7 @@ internal sealed class ExecutionPipeline
     private readonly Func<Guid, int> _getExecutionCount;
     private readonly Func<string, IMagicCommand?> _resolveMagicCommand;
     private readonly Action<Guid>? _notifyOutputUpdated;
+    private readonly Func<Guid, string, bool, CancellationToken, Task<string?>>? _requestInput;
 
     public ExecutionPipeline(
         IVariableStore variables,
@@ -40,7 +41,8 @@ internal sealed class ExecutionPipeline
         Func<Guid, string?> resolveLanguageId,
         Func<Guid, int> getExecutionCount,
         Func<string, IMagicCommand?>? resolveMagicCommand = null,
-        Action<Guid>? notifyOutputUpdated = null)
+        Action<Guid>? notifyOutputUpdated = null,
+        Func<Guid, string, bool, CancellationToken, Task<string?>>? requestInput = null)
     {
         _variables = variables;
         _theme = theme;
@@ -54,6 +56,7 @@ internal sealed class ExecutionPipeline
         _getExecutionCount = getExecutionCount;
         _resolveMagicCommand = resolveMagicCommand ?? (_ => null);
         _notifyOutputUpdated = notifyOutputUpdated;
+        _requestInput = requestInput;
     }
 
     public async Task<ExecutionResult> ExecuteAsync(CellModel cell, CancellationToken ct)
@@ -236,7 +239,11 @@ internal sealed class ExecutionPipeline
             _notebookMetadata,
             _notebook,
             writeOutput: AppendOutput,
-            display: AppendOutput);
+            display: AppendOutput,
+            requestInput: (prompt, isPassword, inputCt) =>
+                _requestInput is null
+                    ? throw new NotSupportedException("Interactive input is not supported by this host.")
+                    : _requestInput(cell.Id, prompt, isPassword, inputCt == default ? ct : inputCt));
 
         ct.ThrowIfCancellationRequested();
 
