@@ -23,6 +23,7 @@ export class BlazorBridge implements vscode.Disposable {
     "cell/executionState",
     "settings/changed",
     "variable/changed",
+    "output/update",
     "extension/consentRequest",
     "extension/changed",
     "layout/missing",
