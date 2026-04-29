@@ -48,6 +48,43 @@ public class ExecutionTests
         var outputs = await _kernel.ExecuteAsync("Write-Host 'hello world'", _context);
         var allText = string.Join(" ", outputs.Select(o => o.Content));
         Assert.IsTrue(allText.Contains("hello world"), $"Expected 'hello world', got: {allText}");
+        Assert.AreEqual(1, outputs.Count(o => o.Content.Contains("hello world")));
+    }
+
+    [TestMethod]
+    public async Task WriteHost_StreamsBeforeCommandCompletes()
+    {
+        var execution = Task.Run(() => _kernel.ExecuteAsync(
+            "Write-Host 'before'\nStart-Sleep -Seconds 2\nWrite-Host 'after'",
+            _context));
+
+        var deadline = DateTimeOffset.UtcNow.AddSeconds(1);
+        while (DateTimeOffset.UtcNow < deadline &&
+               !_context.WrittenOutputs.Any(o => o.Content.Contains("before")))
+        {
+            await Task.Delay(25);
+        }
+
+        Assert.IsTrue(
+            _context.WrittenOutputs.Any(o => o.Content.Contains("before")),
+            "Expected Write-Host output to be streamed before execution completed.");
+        Assert.IsFalse(execution.IsCompleted, "Execution should still be running after the first streamed output.");
+
+        var outputs = await execution;
+        Assert.IsTrue(outputs.Any(o => o.Content.Contains("before")));
+        Assert.IsTrue(outputs.Any(o => o.Content.Contains("after")));
+    }
+
+    [TestMethod]
+    public async Task ReadHost_ReturnsUnsupportedInteractiveInputError()
+    {
+        var outputs = await _kernel.ExecuteAsync("Read-Host 'enter value'", _context);
+
+        Assert.IsTrue(outputs.Any(o => o.IsError), "Expected an error output");
+        var allText = string.Join(" ", outputs.Select(o => o.Content));
+        Assert.IsTrue(
+            allText.Contains("Interactive PowerShell input is not supported by Verso yet."),
+            $"Expected unsupported interactive input message, got: {allText}");
     }
 
     [TestMethod]

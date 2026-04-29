@@ -753,7 +753,7 @@ public sealed class RemoteNotebookService : INotebookService, IAsyncDisposable
                 _ = HandleExtensionChangedAsync();
                 break;
             case "output/update":
-                HandleOutputUpdate();
+                HandleOutputUpdate(paramsJson);
                 break;
         }
     }
@@ -766,8 +766,36 @@ public sealed class RemoteNotebookService : INotebookService, IAsyncDisposable
         OnNotebookChanged?.Invoke();
     }
 
-    private void HandleOutputUpdate()
+    private void HandleOutputUpdate(string? paramsJson)
     {
+        if (!string.IsNullOrWhiteSpace(paramsJson))
+        {
+            try
+            {
+                var notif = JsonSerializer.Deserialize<OutputUpdateNotification>(
+                    paramsJson,
+                    new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+
+                if (notif is not null && Guid.TryParse(notif.CellId, out var cellId))
+                {
+                    var cell = _cells.FirstOrDefault(c => c.Id == cellId);
+                    if (cell is not null)
+                    {
+                        cell.Outputs.Clear();
+                        foreach (var output in notif.Outputs ?? Enumerable.Empty<CellOutputDto>())
+                            cell.Outputs.Add(MapOutputFromDto(output));
+
+                        OnOutputUpdated?.Invoke();
+                        return;
+                    }
+                }
+            }
+            catch (JsonException)
+            {
+                // Fall back to a full refresh below.
+            }
+        }
+
         _ = RefreshCellListAsync().ContinueWith(_ => OnOutputUpdated?.Invoke());
     }
 
@@ -1146,6 +1174,12 @@ public sealed class RemoteNotebookService : INotebookService, IAsyncDisposable
     {
         public string CellId { get; set; } = "";
         public string State { get; set; } = "";
+    }
+
+    private sealed class OutputUpdateNotification
+    {
+        public string CellId { get; set; } = "";
+        public List<CellOutputDto>? Outputs { get; set; }
     }
 
     private sealed class SaveResponse

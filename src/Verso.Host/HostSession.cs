@@ -34,6 +34,7 @@ public sealed class NotebookSession : IAsyncDisposable
         // extension/layout/theme lists.
         ExtensionHost.OnExtensionLoaded += HandleExtensionLoaded;
         ExtensionHost.OnExtensionStatusChanged += HandleExtensionStatusChanged;
+        Scaffold.OnCellOutputUpdated += HandleCellOutputUpdated;
     }
 
     private void HandleExtensionLoaded(Abstractions.IExtension extension)
@@ -44,6 +45,17 @@ public sealed class NotebookSession : IAsyncDisposable
     private void HandleExtensionStatusChanged(string extensionId, Abstractions.ExtensionStatus status)
     {
         SendNotification(Protocol.MethodNames.ExtensionChanged, null);
+    }
+
+    private void HandleCellOutputUpdated(Guid cellId)
+    {
+        var cell = Scaffold.GetCell(cellId);
+        SendNotification(Protocol.MethodNames.OutputUpdate, new
+        {
+            cellId = cellId.ToString(),
+            outputs = cell?.Outputs.Select(Handlers.NotebookHandler.MapOutput).ToList()
+                ?? new List<Dto.CellOutputDto>()
+        });
     }
 
     public CancellationToken GetExecutionToken()
@@ -104,6 +116,7 @@ public sealed class NotebookSession : IAsyncDisposable
     {
         ExtensionHost.OnExtensionLoaded -= HandleExtensionLoaded;
         ExtensionHost.OnExtensionStatusChanged -= HandleExtensionStatusChanged;
+        Scaffold.OnCellOutputUpdated -= HandleCellOutputUpdated;
 
         // Cancel any pending consent requests
         foreach (var tcs in _pendingConsents.Values)
