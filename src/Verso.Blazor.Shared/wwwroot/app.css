@@ -732,6 +732,10 @@ html, body {
     color: var(--verso-status-success, #28A745);
 }
 
+.verso-cell-btn--stop {
+    color: var(--verso-status-error, #DC3545);
+}
+
 .verso-cell-btn--delete {
     color: var(--verso-status-error, #DC3545);
 }

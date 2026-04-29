@@ -6,6 +6,7 @@
                        Position="pos"
                        IsExecuting="cell.Id == ExecutingCellId"
                        OnRunCell="OnRunCell"
+                       OnCancelCell="OnCancelCell"
                        OnSourceChanged="OnSourceChanged"
                        OnResized="HandleCellResized"
                        OnMoved="HandleCellMoved" />
@@ -17,6 +18,7 @@
     [Parameter] public IReadOnlyList<CellModel> Cells { get; set; } = Array.Empty<CellModel>();
     [Parameter] public Guid? ExecutingCellId { get; set; }
     [Parameter] public EventCallback<Guid> OnRunCell { get; set; }
+    [Parameter] public EventCallback<Guid> OnCancelCell { get; set; }
     [Parameter] public EventCallback<(Guid CellId, string Source)> OnSourceChanged { get; set; }
 
     private Dictionary<Guid, CellContainerInfo> _positions = new();
