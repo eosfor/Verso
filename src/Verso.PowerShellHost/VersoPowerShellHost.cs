@@ -8,12 +8,15 @@ public sealed class VersoPowerShellHost : PSHost
 {
     private readonly VersoPowerShellHostUserInterface _ui;
 
-    public VersoPowerShellHost(PowerShellHostOutputCallbackProvider outputCallbackProvider)
+    public VersoPowerShellHost(
+        PowerShellHostOutputCallbackProvider outputCallbackProvider,
+        PowerShellHostInputCallbackProvider inputCallbackProvider)
     {
         ArgumentNullException.ThrowIfNull(outputCallbackProvider);
+        ArgumentNullException.ThrowIfNull(inputCallbackProvider);
 
         InstanceId = Guid.NewGuid();
-        _ui = new VersoPowerShellHostUserInterface(outputCallbackProvider);
+        _ui = new VersoPowerShellHostUserInterface(outputCallbackProvider, inputCallbackProvider);
         PrivateData = PSObject.AsPSObject(new object());
     }
 

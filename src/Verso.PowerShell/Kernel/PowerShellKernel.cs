@@ -87,7 +87,19 @@ public sealed class PowerShellKernel : ILanguageKernel
                 return context.WriteOutputAsync(cellOutput);
             }
 
-            var result = _runspaceManager!.Invoke(code, context.CancellationToken, AppendHostOutput);
+            Task<string?> RequestHostInput(PowerShellHostInputRequest request)
+            {
+                return context.RequestInputAsync(
+                    request.Prompt,
+                    request.IsPassword,
+                    context.CancellationToken);
+            }
+
+            var result = _runspaceManager!.Invoke(
+                code,
+                context.CancellationToken,
+                AppendHostOutput,
+                RequestHostInput);
 
             // Output stream (objects)
             if (result.OutputLines.Count > 0)
