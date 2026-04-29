@@ -371,6 +371,12 @@ public sealed class Scaffold : IAsyncDisposable
     /// </summary>
     public event Action<Guid>? OnCellOutputUpdated;
 
+    /// <summary>
+    /// Optional front-end hook used by kernels that need a single line of user
+    /// input during execution, such as PowerShell Read-Host.
+    /// </summary>
+    public Func<Guid, string, bool, CancellationToken, Task<string?>>? InputRequester { get; set; }
+
     public async Task<ExecutionResult> ExecuteCellAsync(Guid cellId, CancellationToken ct = default)
     {
         // Ensure parameter defaults are in the variable store before any cell runs
@@ -695,6 +701,7 @@ public sealed class Scaffold : IAsyncDisposable
             ResolveLanguageId,
             GetExecutionCount,
             ResolveMagicCommand,
-            id => OnCellOutputUpdated?.Invoke(id));
+            id => OnCellOutputUpdated?.Invoke(id),
+            InputRequester);
     }
 }

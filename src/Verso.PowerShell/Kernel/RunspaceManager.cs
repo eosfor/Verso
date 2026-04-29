@@ -21,6 +21,7 @@ internal sealed class RunspaceManager : IDisposable
 {
     private Runspace? _runspace;
     private PowerShellHostOutputCallback? _currentHostOutput;
+    private PowerShellHostInputCallback? _currentHostInput;
     private bool _disposed;
 
     public void Initialize()
@@ -35,7 +36,9 @@ internal sealed class RunspaceManager : IDisposable
             iss.ExecutionPolicy = Microsoft.PowerShell.ExecutionPolicy.RemoteSigned;
         }
 
-        var host = new VersoPowerShellHost(() => _currentHostOutput);
+        var host = new VersoPowerShellHost(
+            () => _currentHostOutput,
+            () => _currentHostInput);
         _runspace = RunspaceFactory.CreateRunspace(host, iss);
         _runspace.Open();
     }
@@ -43,7 +46,8 @@ internal sealed class RunspaceManager : IDisposable
     public InvokeResult Invoke(
         string code,
         CancellationToken ct,
-        PowerShellHostOutputCallback? hostOutput = null)
+        PowerShellHostOutputCallback? hostOutput = null,
+        PowerShellHostInputCallback? hostInput = null)
     {
         ThrowIfDisposed();
         var runspace = _runspace ?? throw new InvalidOperationException("RunspaceManager not initialized.");
@@ -66,6 +70,7 @@ internal sealed class RunspaceManager : IDisposable
         Exception? exception = null;
 
         _currentHostOutput = hostOutput;
+        _currentHostInput = hostInput;
         try
         {
             Collection<PSObject> results = ps.Invoke();
@@ -159,6 +164,7 @@ internal sealed class RunspaceManager : IDisposable
         finally
         {
             _currentHostOutput = null;
+            _currentHostInput = null;
         }
 
         return new InvokeResult(outputLines, outputMimeType, errorLines, warningLines, informationLines, exception);
