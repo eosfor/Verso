@@ -1,6 +1,7 @@
 @using System.Net
 @using System.Text
 @using System.Text.Json
+@using Verso.Blazor.Shared.Models
 @inject INotebookService Service
 @inject IJSRuntime JS
 
@@ -34,12 +35,12 @@
                     <span class="verso-cell-collapse-chevron @(IsSectionCollapsed ? "verso-cell-collapse-chevron--collapsed" : "")">&#x25BC;</span>
                 </button>
             }
-            @if (!IsEditable)
+            @if (SupportsInputCollapse)
             {
                 <button class="verso-cell-btn verso-cell-gutter-btn verso-cell-gutter-btn--collapse"
-                        @onclick="ToggleCellCollapse"
-                        title="@(_isCellCollapsed ? "Expand" : "Collapse")">
-                    <span class="verso-cell-collapse-chevron @(_isCellCollapsed ? "verso-cell-collapse-chevron--collapsed" : "")">&#x25BC;</span>
+                        @onclick="ToggleInputCollapseAsync"
+                        title="@(IsInputCollapsed ? "Expand Code" : "Collapse Code")">
+                    <span class="verso-cell-collapse-chevron @(IsInputCollapsed ? "verso-cell-collapse-chevron--collapsed" : "")">&#x25BC;</span>
                 </button>
             }
         </div>
@@ -92,6 +93,22 @@
                 </div>
             }
             <div class="verso-cell-toolbar-actions">
+                @if (SupportsInputCollapse)
+                {
+                    <button class="verso-cell-btn verso-cell-btn--action verso-cell-btn--mode"
+                            @onclick="ToggleInputCollapseAsync"
+                            title="@(IsInputCollapsed ? "Expand code input" : "Collapse code input")">
+                        @(IsInputCollapsed ? "Code: 2L" : "Code: full")
+                    </button>
+                }
+                @if (HasOutputs)
+                {
+                    <button class="verso-cell-btn verso-cell-btn--action verso-cell-btn--mode"
+                            @onclick="CycleOutputVisibilityAsync"
+                            title="Cycle output visibility">
+                        @OutputVisibilityLabel
+                    </button>
+                }
                 @foreach (var action in _enabledCellActions)
                 {
                     var act = action;
@@ -123,15 +140,17 @@
         @if (!IsEditable)
         {
             @* Non-editable cell types (e.g. parameters): show rendered output directly, no editor *@
-            @if (_isCellCollapsed)
+            @if (IsOutputHidden)
             {
-                <div class="verso-cell-rendered-input verso-cell-rendered-input--collapsed"
-                     @onclick="ToggleCellCollapse">
+                <div class="verso-cell-output-summary" @onclick="() => OnSelect.InvokeAsync(CellData.Id)">
+                    @OutputSummaryText
                 </div>
             }
             else if (CellData.Outputs.Count > 0)
             {
-                <div class="verso-cell-rendered-input" data-cell-id="@CellData.Id" @onclick="() => OnSelect.InvokeAsync(CellData.Id)">
+                <div class="verso-cell-rendered-input @(IsOutputPreview ? "verso-cell-rendered-input--preview" : "")"
+                     data-cell-id="@CellData.Id"
+                     @onclick="() => OnSelect.InvokeAsync(CellData.Id)">
                     @foreach (var output in CellData.Outputs)
                     {
                         @if (output.IsError)
@@ -168,6 +187,12 @@
                 </div>
             }
         }
+        else if (SupportsInputCollapse && IsInputCollapsed)
+        {
+            <div class="verso-cell-source-preview" @onclick="() => OnSelect.InvokeAsync(CellData.Id)">
+                <pre>@CollapsedSourcePreview</pre>
+            </div>
+        }
         else if (!IsInPreviewMode)
         {
             <div class="verso-cell-editor" @onclick="() => OnSelect.InvokeAsync(CellData.Id)">
@@ -191,60 +216,69 @@
 
         @if (CellData.Outputs.Count > 0 && IsEditable)
         {
-            <div class="verso-cell-outputs @(IsInPreviewMode ? "verso-cell-outputs--clickable" : "")"
-                 data-cell-id="@CellData.Id"
-                 @onclick="HandleOutputClick">
-                @foreach (var output in CellData.Outputs)
-                {
-                    @if (output.IsError)
+            @if (IsOutputHidden)
+            {
+                <div class="verso-cell-output-summary" @onclick="HandleOutputClick">
+                    @OutputSummaryText
+                </div>
+            }
+            else
+            {
+                <div class="verso-cell-outputs @(IsInPreviewMode ? "verso-cell-outputs--clickable" : "") @(IsOutputPreview ? "verso-cell-outputs--preview" : "")"
+                     data-cell-id="@CellData.Id"
+                     @onclick="HandleOutputClick">
+                    @foreach (var output in CellData.Outputs)
                     {
-                        <div class="verso-output verso-output--error">
-                            <div class="verso-output-error-name">@(output.ErrorName ?? "Error")</div>
-                            <pre class="verso-output-error-content">@output.Content</pre>
-                            @if (output.ErrorStackTrace is not null)
-                            {
-                                <pre class="verso-output-error-stack">@output.ErrorStackTrace</pre>
-                            }
-                        </div>
+                        @if (output.IsError)
+                        {
+                            <div class="verso-output verso-output--error">
+                                <div class="verso-output-error-name">@(output.ErrorName ?? "Error")</div>
+                                <pre class="verso-output-error-content">@output.Content</pre>
+                                @if (output.ErrorStackTrace is not null)
+                                {
+                                    <pre class="verso-output-error-stack">@output.ErrorStackTrace</pre>
+                                }
+                            </div>
+                        }
+                        else if (output.MimeType == "text/x-verso-mermaid")
+                        {
+                            <div class="verso-output verso-output--html verso-mermaid-container">
+                                <pre class="mermaid">@output.Content</pre>
+                            </div>
+                        }
+                        else if (output.MimeType == "text/html" || output.MimeType == "image/svg+xml")
+                        {
+                            <div class="verso-output verso-output--html">
+                                @((MarkupString)output.Content)
+                            </div>
+                        }
+                        else if (output.MimeType.StartsWith("image/"))
+                        {
+                            <div class="verso-output verso-output--html">
+                                <img src="@($"data:{output.MimeType};base64,{output.Content}")" style="max-width:100%" />
+                            </div>
+                        }
+                        else if (output.MimeType == "application/json")
+                        {
+                            <div class="verso-output verso-output--html">
+                                @((MarkupString)RenderJsonTree(output.Content))
+                            </div>
+                        }
+                        else if (output.MimeType == "text/csv")
+                        {
+                            <div class="verso-output verso-output--html">
+                                @((MarkupString)RenderCsvTable(output.Content))
+                            </div>
+                        }
+                        else
+                        {
+                            <div class="verso-output verso-output--text">
+                                <pre>@output.Content</pre>
+                            </div>
+                        }
                     }
-                    else if (output.MimeType == "text/x-verso-mermaid")
-                    {
-                        <div class="verso-output verso-output--html verso-mermaid-container">
-                            <pre class="mermaid">@output.Content</pre>
-                        </div>
-                    }
-                    else if (output.MimeType == "text/html" || output.MimeType == "image/svg+xml")
-                    {
-                        <div class="verso-output verso-output--html">
-                            @((MarkupString)output.Content)
-                        </div>
-                    }
-                    else if (output.MimeType.StartsWith("image/"))
-                    {
-                        <div class="verso-output verso-output--html">
-                            <img src="@($"data:{output.MimeType};base64,{output.Content}")" style="max-width:100%" />
-                        </div>
-                    }
-                    else if (output.MimeType == "application/json")
-                    {
-                        <div class="verso-output verso-output--html">
-                            @((MarkupString)RenderJsonTree(output.Content))
-                        </div>
-                    }
-                    else if (output.MimeType == "text/csv")
-                    {
-                        <div class="verso-output verso-output--html">
-                            @((MarkupString)RenderCsvTable(output.Content))
-                        </div>
-                    }
-                    else
-                    {
-                        <div class="verso-output verso-output--text">
-                            <pre>@output.Content</pre>
-                        </div>
-                    }
-                }
-            </div>
+                </div>
+            }
         }
     </div>
 </div>
@@ -274,7 +308,6 @@
     private List<ToolbarActionInfo> _enabledCellActions = new();
     private bool _showTypeDropdown;
     private bool _showLanguageDropdown;
-    private bool _isCellCollapsed;
 
     // Actions already represented by hardcoded buttons in the cell toolbar
     private static readonly HashSet<string> _hardcodedActionIds = new(StringComparer.OrdinalIgnoreCase)
@@ -284,6 +317,29 @@
 
     private bool _hasMermaidContent;
     private bool _pendingAutoExecute;
+
+    private bool SupportsInputCollapse => IsEditable && string.Equals(CellData.Type, "code", StringComparison.OrdinalIgnoreCase);
+
+    private bool HasOutputs => CellData.Outputs.Count > 0;
+
+    private bool IsInputCollapsed => ReadMetadataBool(CellViewStateMetadata.InputCollapsedKey);
+
+    private string OutputVisibilityMode => NormalizeOutputVisibility(ReadMetadataString(CellViewStateMetadata.OutputVisibilityKey));
+
+    private bool IsOutputPreview => string.Equals(OutputVisibilityMode, CellViewStateMetadata.OutputPreview, StringComparison.Ordinal);
+
+    private bool IsOutputHidden => string.Equals(OutputVisibilityMode, CellViewStateMetadata.OutputHidden, StringComparison.Ordinal);
+
+    private string OutputVisibilityLabel => OutputVisibilityMode switch
+    {
+        CellViewStateMetadata.OutputPreview => "Output: 5L",
+        CellViewStateMetadata.OutputHidden => "Output: off",
+        _ => "Output: full"
+    };
+
+    private string OutputSummaryText => $"{CellData.Outputs.Count} output(s) hidden";
+
+    private string CollapsedSourcePreview => BuildCollapsedSourcePreview(CellData.Source);
 
     private bool IsInPreviewMode => CollapsesInput && CellData.Outputs.Count > 0 && !IsSelected
         && !string.IsNullOrWhiteSpace(CellData.Source);
@@ -391,6 +447,23 @@
         }
     }
 
+    private async Task ToggleInputCollapseAsync()
+    {
+        await Service.SetCellInputCollapsedAsync(CellData.Id, !IsInputCollapsed);
+    }
+
+    private async Task CycleOutputVisibilityAsync()
+    {
+        var next = OutputVisibilityMode switch
+        {
+            CellViewStateMetadata.OutputExpanded => CellViewStateMetadata.OutputPreview,
+            CellViewStateMetadata.OutputPreview => CellViewStateMetadata.OutputHidden,
+            _ => CellViewStateMetadata.OutputExpanded
+        };
+
+        await Service.SetCellOutputVisibilityAsync(CellData.Id, next);
+    }
+
     private async Task<object?> HandleGetHoverInfo(string code, int position)
     {
         var info = await Service.GetHoverInfoAsync(CellData.Id, code, position);
@@ -419,8 +492,6 @@
             }).ToArray()
         };
     }
-
-    private void ToggleCellCollapse() => _isCellCollapsed = !_isCellCollapsed;
 
     private void ToggleTypeDropdown()
     {
@@ -465,6 +536,62 @@
         var info = Service.RegisteredLanguages
             .FirstOrDefault(l => string.Equals(l.Id, languageId, StringComparison.OrdinalIgnoreCase));
         return info?.DisplayName ?? languageId;
+    }
+
+    private bool ReadMetadataBool(string key)
+    {
+        if (!CellData.Metadata.TryGetValue(key, out var value) || value is null)
+            return false;
+
+        return value switch
+        {
+            bool b => b,
+            JsonElement { ValueKind: JsonValueKind.True } => true,
+            JsonElement { ValueKind: JsonValueKind.False } => false,
+            string s when bool.TryParse(s, out var parsed) => parsed,
+            _ => false
+        };
+    }
+
+    private string? ReadMetadataString(string key)
+    {
+        if (!CellData.Metadata.TryGetValue(key, out var value) || value is null)
+            return null;
+
+        return value switch
+        {
+            string s => s,
+            JsonElement { ValueKind: JsonValueKind.String } element => element.GetString(),
+            _ => value.ToString()
+        };
+    }
+
+    private static string NormalizeOutputVisibility(string? visibility)
+    {
+        if (string.Equals(visibility, CellViewStateMetadata.OutputPreview, StringComparison.OrdinalIgnoreCase))
+            return CellViewStateMetadata.OutputPreview;
+        if (string.Equals(visibility, CellViewStateMetadata.OutputHidden, StringComparison.OrdinalIgnoreCase))
+            return CellViewStateMetadata.OutputHidden;
+        return CellViewStateMetadata.OutputExpanded;
+    }
+
+    private static string BuildCollapsedSourcePreview(string source)
+    {
+        var lines = source
+            .Replace("\r\n", "\n", StringComparison.Ordinal)
+            .Split('\n')
+            .Select(static line => line.TrimEnd())
+            .Where(static line => !string.IsNullOrWhiteSpace(line))
+            .ToList();
+
+        if (lines.Count == 0)
+            return "(empty)";
+
+        var previewLines = lines.Take(2).ToList();
+        if (lines.Count > previewLines.Count)
+            previewLines.Add("...");
+
+        return string.Join(Environment.NewLine, previewLines);
     }
 
     // --- MIME type renderers ---

@@ -315,6 +315,73 @@ public sealed class RemoteNotebookService : INotebookService, IAsyncDisposable
         OnCellExecuted?.Invoke();
     }
 
+    public async Task SetCellInputCollapsedAsync(Guid cellId, bool collapsed)
+    {
+        var cell = _cells.FirstOrDefault(c => c.Id == cellId);
+        if (cell is null)
+            return;
+
+        Dictionary<string, object?>? set = null;
+        List<string>? remove = null;
+
+        if (collapsed)
+        {
+            cell.Metadata[CellViewStateMetadata.InputCollapsedKey] = true;
+            set = new Dictionary<string, object?>
+            {
+                [CellViewStateMetadata.InputCollapsedKey] = true
+            };
+        }
+        else
+        {
+            cell.Metadata.Remove(CellViewStateMetadata.InputCollapsedKey);
+            remove = new List<string> { CellViewStateMetadata.InputCollapsedKey };
+        }
+
+        await _bridge.RequestVoidAsync("cell/updateMetadata", new
+        {
+            cellId = cellId.ToString(),
+            set,
+            remove
+        });
+
+        OnNotebookChanged?.Invoke();
+    }
+
+    public async Task SetCellOutputVisibilityAsync(Guid cellId, string visibility)
+    {
+        var cell = _cells.FirstOrDefault(c => c.Id == cellId);
+        if (cell is null)
+            return;
+
+        var normalized = NormalizeOutputVisibility(visibility);
+        Dictionary<string, object?>? set = null;
+        List<string>? remove = null;
+
+        if (string.Equals(normalized, CellViewStateMetadata.OutputExpanded, StringComparison.Ordinal))
+        {
+            cell.Metadata.Remove(CellViewStateMetadata.OutputVisibilityKey);
+            remove = new List<string> { CellViewStateMetadata.OutputVisibilityKey };
+        }
+        else
+        {
+            cell.Metadata[CellViewStateMetadata.OutputVisibilityKey] = normalized;
+            set = new Dictionary<string, object?>
+            {
+                [CellViewStateMetadata.OutputVisibilityKey] = normalized
+            };
+        }
+
+        await _bridge.RequestVoidAsync("cell/updateMetadata", new
+        {
+            cellId = cellId.ToString(),
+            set,
+            remove
+        });
+
+        OnNotebookChanged?.Invoke();
+    }
+
     // ── Execution ───────────────────────────────────────────────────────
 
     public async Task<ExecutionResultDto> ExecuteCellAsync(Guid cellId)
@@ -637,6 +704,15 @@ public sealed class RemoteNotebookService : INotebookService, IAsyncDisposable
     {
         // In WASM, parameters is the only known non-editable built-in cell type
         return !string.Equals(cellType, "parameters", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string NormalizeOutputVisibility(string visibility)
+    {
+        if (string.Equals(visibility, CellViewStateMetadata.OutputPreview, StringComparison.OrdinalIgnoreCase))
+            return CellViewStateMetadata.OutputPreview;
+        if (string.Equals(visibility, CellViewStateMetadata.OutputHidden, StringComparison.OrdinalIgnoreCase))
+            return CellViewStateMetadata.OutputHidden;
+        return CellViewStateMetadata.OutputExpanded;
     }
 
     // ── Cell properties ──────────────────────────────────────────────

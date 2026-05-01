@@ -23,6 +23,7 @@ public static class MethodNames
     public const string CellRemove = "cell/remove";
     public const string CellMove = "cell/move";
     public const string CellUpdateSource = "cell/updateSource";
+    public const string CellUpdateMetadata = "cell/updateMetadata";
     public const string CellChangeType = "cell/changeType";
     public const string CellChangeLanguage = "cell/changeLanguage";
     public const string CellGet = "cell/get";
