@@ -51,6 +51,36 @@ public static class CellHandler
         return new { success = true };
     }
 
+    public static object HandleUpdateMetadata(NotebookSession ns, JsonElement? @params)
+    {
+        var p = @params?.Deserialize<CellUpdateMetadataParams>(JsonRpcMessage.SerializerOptions)
+            ?? throw new JsonException("Missing params for cell/updateMetadata");
+
+        var cellId = Guid.Parse(p.CellId);
+        var cell = ns.Scaffold.Cells.FirstOrDefault(c => c.Id == cellId);
+        if (cell is null)
+            return new { success = false };
+
+        var setKeys = p.Set?.Keys ?? Enumerable.Empty<string>();
+        var removeKeys = p.Remove ?? new List<string>();
+        if (setKeys.Intersect(removeKeys, StringComparer.Ordinal).Any())
+            throw new JsonException("cell/updateMetadata cannot set and remove the same key.");
+
+        if (p.Set is not null)
+        {
+            foreach (var (key, value) in p.Set)
+                cell.Metadata[key] = ConvertJsonElement(value);
+        }
+
+        if (p.Remove is not null)
+        {
+            foreach (var key in p.Remove)
+                cell.Metadata.Remove(key);
+        }
+
+        return new { success = true };
+    }
+
     public static object HandleChangeType(NotebookSession ns, JsonElement? @params)
     {
         var p = @params?.Deserialize<CellChangeTypeParams>(JsonRpcMessage.SerializerOptions)
@@ -126,5 +156,38 @@ public static class CellHandler
     public static object HandleList(NotebookSession ns)
     {
         return new { cells = ns.Scaffold.Cells.Select(NotebookHandler.MapCell).ToList() };
+    }
+
+    private static object ConvertJsonElement(JsonElement element)
+    {
+        return element.ValueKind switch
+        {
+            JsonValueKind.String => element.GetString()!,
+            JsonValueKind.Number => element.TryGetInt64(out var l) ? l : element.GetDouble(),
+            JsonValueKind.True => true,
+            JsonValueKind.False => false,
+            JsonValueKind.Null => null!,
+            JsonValueKind.Object => ConvertJsonObject(element),
+            JsonValueKind.Array => ConvertJsonArray(element),
+            _ => element.GetRawText()
+        };
+    }
+
+    private static Dictionary<string, object> ConvertJsonObject(JsonElement element)
+    {
+        var dict = new Dictionary<string, object>();
+        foreach (var prop in element.EnumerateObject())
+            dict[prop.Name] = ConvertJsonElement(prop.Value);
+
+        return dict;
+    }
+
+    private static List<object> ConvertJsonArray(JsonElement element)
+    {
+        var list = new List<object>();
+        foreach (var item in element.EnumerateArray())
+            list.Add(ConvertJsonElement(item));
+
+        return list;
     }
 }

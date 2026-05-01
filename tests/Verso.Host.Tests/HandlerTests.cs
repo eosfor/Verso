@@ -226,6 +226,64 @@ public class HandlerTests
     }
 
     [TestMethod]
+    public async Task CellUpdateMetadata_UpdatesOnlyRequestedKeys()
+    {
+        var (session, notebookId) = await CreateOpenSession();
+        var ns = GetNs(session, notebookId);
+        var addParams = JsonSerializer.SerializeToElement(
+            new CellAddParams { Source = "hello" }, JsonRpcMessage.SerializerOptions);
+        var cell = CellHandler.HandleAdd(ns, addParams);
+        var cellId = Guid.Parse(cell.Id);
+        ns.Scaffold.GetCell(cellId)!.Metadata["keep"] = "value";
+
+        var updateParams = JsonSerializer.SerializeToElement(
+            new CellUpdateMetadataParams
+            {
+                CellId = cell.Id,
+                Set = new Dictionary<string, JsonElement>
+                {
+                    ["verso.ui.inputCollapsed"] = JsonSerializer.SerializeToElement(true),
+                    ["verso.ui.outputVisibility"] = JsonSerializer.SerializeToElement("preview")
+                }
+            },
+            JsonRpcMessage.SerializerOptions);
+
+        CellHandler.HandleUpdateMetadata(ns, updateParams);
+
+        var fetched = ns.Scaffold.GetCell(cellId)!;
+        Assert.AreEqual("value", fetched.Metadata["keep"]);
+        Assert.AreEqual(true, fetched.Metadata["verso.ui.inputCollapsed"]);
+        Assert.AreEqual("preview", fetched.Metadata["verso.ui.outputVisibility"]);
+    }
+
+    [TestMethod]
+    public async Task CellUpdateMetadata_RemovesRequestedKeys()
+    {
+        var (session, notebookId) = await CreateOpenSession();
+        var ns = GetNs(session, notebookId);
+        var addParams = JsonSerializer.SerializeToElement(
+            new CellAddParams { Source = "hello" }, JsonRpcMessage.SerializerOptions);
+        var cell = CellHandler.HandleAdd(ns, addParams);
+        var cellId = Guid.Parse(cell.Id);
+        var fetched = ns.Scaffold.GetCell(cellId)!;
+        fetched.Metadata["verso.ui.inputCollapsed"] = true;
+        fetched.Metadata["keep"] = "value";
+
+        var updateParams = JsonSerializer.SerializeToElement(
+            new CellUpdateMetadataParams
+            {
+                CellId = cell.Id,
+                Remove = new List<string> { "verso.ui.inputCollapsed" }
+            },
+            JsonRpcMessage.SerializerOptions);
+
+        CellHandler.HandleUpdateMetadata(ns, updateParams);
+
+        Assert.IsFalse(fetched.Metadata.ContainsKey("verso.ui.inputCollapsed"));
+        Assert.AreEqual("value", fetched.Metadata["keep"]);
+    }
+
+    [TestMethod]
     public async Task CellGet_ReturnsCell()
     {
         var (session, notebookId) = await CreateOpenSession();
