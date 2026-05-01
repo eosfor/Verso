@@ -287,7 +287,54 @@
         Service.OnOutputUpdated += HandleOutputUpdated;
 
         if (Service is RemoteNotebookService remoteService)
+        {
             remoteService.OnExtensionConsentRequested += HandleExtensionConsentRequested;
+            remoteService.OnKernelRestarting += HandleKernelRestarting;
+            remoteService.OnKernelRestarted += HandleKernelRestarted;
+            remoteService.OnLayoutMissing += HandleLayoutMissing;
+        }
+    }
+
+    private void HandleKernelRestarting(string? kernelId)
+    {
+        _ = InvokeAsync(async () =>
+        {
+            // Persistent banner — cleared explicitly by HandleKernelRestarted rather
+            // than the 3-second timeout used by ShowStatusAsync.
+            _statusCts?.Cancel();
+            _statusMessage = "Restarting kernel...";
+            StateHasChanged();
+            await Task.CompletedTask;
+        });
+    }
+
+    private void HandleKernelRestarted(string? kernelId)
+    {
+        _ = InvokeAsync(async () =>
+        {
+            _executingCellId = null;
+
+            var hasExtensionCells = Service.Cells.Any(c =>
+                c.Source is not null &&
+                (c.Source.Contains("#!nuget", StringComparison.Ordinal)
+                 || c.Source.Contains("#!extension", StringComparison.Ordinal)
+                 || c.Source.Contains("#r \"nuget:", StringComparison.Ordinal)));
+
+            var message = hasExtensionCells
+                ? "Kernel restarted. Re-run cells with #!nuget or #!extension to reload."
+                : "Kernel restarted";
+
+            await ShowStatusAsync(message);
+        });
+    }
+
+    private void HandleLayoutMissing(string layoutId)
+    {
+        _ = InvokeAsync(async () =>
+        {
+            await ShowStatusAsync(
+                $"Layout '{layoutId}' not loaded. Run the cell containing #!extension or #!nuget to load it.");
+        });
     }
 
     private void HandleCellExecutedRefresh()
@@ -849,15 +896,17 @@
         return false;
     }
 
-    private async Task HandleActionExecuted(string actionId)
+    private Task HandleActionExecuted(string actionId)
     {
         if (string.Equals(actionId, "verso.action.run-all", StringComparison.OrdinalIgnoreCase))
             _selectedCellId = null;
 
-        if (string.Equals(actionId, "verso.action.restart-kernel", StringComparison.OrdinalIgnoreCase))
-            await ShowStatusAsync("Kernel restarted");
+        // Restart Kernel feedback is now driven by the kernel/restarting and
+        // kernel/restarted notifications from the supervisor, since the actual
+        // restart happens out-of-process via host kill+respawn.
 
         StateHasChanged();
+        return Task.CompletedTask;
     }
 
     private Task HandleError(string message)
@@ -885,6 +934,11 @@
         Service.OnOutputUpdated -= HandleOutputUpdated;
 
         if (Service is RemoteNotebookService remoteService)
+        {
             remoteService.OnExtensionConsentRequested -= HandleExtensionConsentRequested;
+            remoteService.OnKernelRestarting -= HandleKernelRestarting;
+            remoteService.OnKernelRestarted -= HandleKernelRestarted;
+            remoteService.OnLayoutMissing -= HandleLayoutMissing;
+        }
     }
 }

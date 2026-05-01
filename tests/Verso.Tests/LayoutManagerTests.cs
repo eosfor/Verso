@@ -32,6 +32,44 @@ public sealed class LayoutManagerTests
         var manager = new LayoutManager(new ILayoutEngine[] { notebook }, "notebook");
 
         Assert.AreSame(notebook, manager.ActiveLayout);
+        Assert.IsNull(manager.MissingLayoutId);
+    }
+
+    [TestMethod]
+    public void Constructor_WithUnknownDefaultLayoutId_TracksMissingIdInsteadOfThrowing()
+    {
+        // A notebook can reference a layout that ships in an extension which
+        // hasn't been loaded yet (e.g. via #!extension). Construction must succeed
+        // so the host can surface a banner instead of failing the whole open.
+        var manager = new LayoutManager(new ILayoutEngine[] { new NotebookLayout() }, "dashboard");
+
+        Assert.IsNull(manager.ActiveLayout);
+        Assert.AreEqual("dashboard", manager.MissingLayoutId);
+    }
+
+    [TestMethod]
+    public void TryActivate_KnownId_ReturnsTrueAndClearsMissingId()
+    {
+        var notebook = new NotebookLayout();
+        var manager = new LayoutManager(new ILayoutEngine[] { notebook }, "dashboard");
+        Assert.AreEqual("dashboard", manager.MissingLayoutId);
+
+        var activated = manager.TryActivate("notebook");
+
+        Assert.IsTrue(activated);
+        Assert.AreSame(notebook, manager.ActiveLayout);
+        Assert.IsNull(manager.MissingLayoutId);
+    }
+
+    [TestMethod]
+    public void TryActivate_UnknownId_ReturnsFalseAndDoesNotThrow()
+    {
+        var manager = new LayoutManager(new ILayoutEngine[] { new NotebookLayout() }, "notebook");
+
+        var activated = manager.TryActivate("nonexistent");
+
+        Assert.IsFalse(activated);
+        Assert.IsNotNull(manager.ActiveLayout);
     }
 
     [TestMethod]

@@ -95,6 +95,18 @@ public sealed class Scaffold : IAsyncDisposable
     public INotebookOperations NotebookOps => _notebookOps;
 
     /// <summary>
+    /// Optional external handler invoked instead of the in-process kernel restart.
+    /// Set by host supervisors (e.g. the VS Code extension) that need to kill and
+    /// respawn the entire process to release native resources like file handles
+    /// pinned by the default AssemblyLoadContext.
+    ///
+    /// When set, <see cref="RestartKernelAsync"/> calls this handler and skips
+    /// the in-process dispose/reinit cycle. When null, the in-process restart
+    /// runs (used by CLI, REPL, and server hosts).
+    /// </summary>
+    public Func<string?, Task>? HostRestartHandler { get; set; }
+
+    /// <summary>
     /// Updates the notebook file path used for resolving relative paths (e.g. in <c>#!import</c>).
     /// This is called after construction when the file path is not available at open time.
     /// </summary>
@@ -272,10 +284,19 @@ public sealed class Scaffold : IAsyncDisposable
     }
 
     /// <summary>
-    /// Restarts a kernel: disposes it, removes from initialized set, clears variables, and re-initializes.
+    /// Restarts a kernel. When <see cref="HostRestartHandler"/> is set the call is
+    /// delegated externally (the supervisor will respawn the process); otherwise the
+    /// kernel is disposed in-process, the variable store is cleared, and the kernel
+    /// is re-warmed.
     /// </summary>
     public async Task RestartKernelAsync(string? kernelId = null)
     {
+        if (HostRestartHandler is { } handler)
+        {
+            await handler(kernelId).ConfigureAwait(false);
+            return;
+        }
+
         var id = kernelId ?? _notebook.DefaultKernelId
             ?? throw new InvalidOperationException("No kernel ID specified and no default kernel is configured.");
 

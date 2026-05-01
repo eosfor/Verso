@@ -84,6 +84,24 @@ public static class NotebookHandler
         var ns = session.GetSession(notebookId);
         extensionHost.ConsentHandler = (extensions, ct) => ns.RequestConsentAsync(extensions, ct);
 
+        // Delegate kernel restart to the supervisor (e.g. VS Code extension) so the
+        // entire host process can be killed and respawned to release pinned DLLs.
+        // Without an external supervisor (CLI/server hosts) the in-process restart in
+        // Scaffold.RestartKernelAsync remains the default.
+        scaffold.HostRestartHandler = kernelId =>
+        {
+            ns.SendNotification(MethodNames.KernelRestartRequested, new { kernelId });
+            return Task.CompletedTask;
+        };
+
+        // Surface a missing-layout banner if the notebook references a layout that
+        // isn't registered yet (typically because it ships in an extension the
+        // notebook will load via #!extension or #!nuget).
+        if (scaffold.LayoutManager?.MissingLayoutId is { } missingLayoutId)
+        {
+            ns.SendNotification(MethodNames.LayoutMissing, new { layoutId = missingLayoutId });
+        }
+
         // Eagerly warm up kernels for languages present in the notebook so
         // IntelliSense is available before the first cell execution.
         var languagesToWarm = scaffold.Cells

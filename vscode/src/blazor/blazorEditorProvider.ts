@@ -5,6 +5,7 @@ import { HostProcess } from "../host/hostProcess";
 import { hostRegistry } from "../host/hostRegistry";
 import { notebookRegistry } from "../host/notebookRegistry";
 import { BlazorBridge } from "./blazorBridge";
+import { log } from "../log";
 import {
   CellAddParams,
   CellDto,
@@ -38,6 +39,9 @@ export class BlazorEditorProvider
 
   private readonly bridges = new Map<vscode.WebviewPanel, BlazorBridge>();
   private readonly hosts = new Map<vscode.WebviewPanel, HostProcess>();
+  private readonly documents = new Map<vscode.WebviewPanel, VersoDocument>();
+  /** Per-panel mutex serializing host restarts so concurrent clicks coalesce. */
+  private readonly restartLocks = new Map<vscode.WebviewPanel, Promise<void>>();
 
   // --- Edit tracking ---
   private readonly _onDidChangeCustomDocument =
@@ -149,12 +153,20 @@ export class BlazorEditorProvider
       this._onDidChangeCustomDocument.fire({ document });
     };
 
+    // Wire the kernel-restart entrypoint so the toolbar action and the
+    // #!restart magic command both flow through restartHost.
+    bridge.onRestartRequested = (kernelId) =>
+      this.restartHost(webviewPanel, kernelId);
+
     this.bridges.set(webviewPanel, bridge);
+    this.documents.set(webviewPanel, document);
 
     webviewPanel.onDidDispose(() => {
       const b = this.bridges.get(webviewPanel);
       b?.dispose();
       this.bridges.delete(webviewPanel);
+      this.documents.delete(webviewPanel);
+      this.restartLocks.delete(webviewPanel);
 
       notebookRegistry.unregister(document.uri);
       hostRegistry.unregister(document.uri);
@@ -172,34 +184,14 @@ export class BlazorEditorProvider
       const filePath = document.uri.fsPath;
       const workingDir = path.dirname(filePath);
 
-      // Open the notebook via the host (must happen before setFilePath)
-      const result = await host.sendRequest<NotebookOpenResult>(
-        "notebook/open",
-        { content, filePath, workingDir }
-      );
+      const result = await this.openNotebookInHost(host, content, filePath, workingDir, {
+        addDefaultCellIfEmpty: true,
+      });
 
       const notebookId = result.notebookId;
       notebookRegistry.register(document.uri, notebookId);
       hostRegistry.register(document.uri, { host, bridge });
       bridge.setNotebookId(notebookId);
-
-      // If the notebook has no cells (new/empty file), register a default
-      // code cell with the host so the WASM app has something to render.
-      if (result.cells.length === 0) {
-        const added = await host.sendRequest<CellDto>("cell/add", {
-          type: "code",
-          language: "csharp",
-          source: "",
-          notebookId,
-        } as CellAddParams & { notebookId: string });
-        result.cells.push(added);
-      }
-
-      // Set file path on the host (requires notebook to be open)
-      await host.sendRequest("notebook/setFilePath", {
-        filePath,
-        notebookId,
-      } satisfies NotebookSetFilePathParams & { notebookId: string });
 
       // Notify the WASM app that the notebook is ready
       bridge.notify("notebook/opened", { filePath, ...result });
@@ -210,6 +202,167 @@ export class BlazorEditorProvider
         }`
       );
     }
+  }
+
+  /**
+   * Sends notebook/open to the host, optionally seeds a default cell when the
+   * resulting notebook is empty, and finally sets the file path. Used both for
+   * the initial editor open and for the restart flow where the in-memory
+   * snapshot replaces the on-disk content.
+   */
+  private async openNotebookInHost(
+    host: HostProcess,
+    content: string,
+    filePath: string,
+    workingDir: string,
+    options: { addDefaultCellIfEmpty: boolean }
+  ): Promise<NotebookOpenResult> {
+    const result = await host.sendRequest<NotebookOpenResult>(
+      "notebook/open",
+      { content, filePath, workingDir }
+    );
+
+    const notebookId = result.notebookId;
+
+    // On first open of a brand-new file, seed a default code cell so the WASM
+    // app renders something. On restart we skip this because the snapshot
+    // already mirrors what the webview is showing — adding a cell here would
+    // desynchronize the two.
+    if (options.addDefaultCellIfEmpty && result.cells.length === 0) {
+      const added = await host.sendRequest<CellDto>("cell/add", {
+        type: "code",
+        language: "csharp",
+        source: "",
+        notebookId,
+      } as CellAddParams & { notebookId: string });
+      result.cells.push(added);
+    }
+
+    await host.sendRequest("notebook/setFilePath", {
+      filePath,
+      notebookId,
+    } satisfies NotebookSetFilePathParams & { notebookId: string });
+
+    return result;
+  }
+
+  /**
+   * Kills the panel's Verso.Host process and spawns a fresh one, transplanting
+   * the in-memory notebook into the new process via a verso-format snapshot
+   * (which preserves cell GUIDs across the Jupyter and verso serializers alike).
+   *
+   * Concurrent calls coalesce on the per-panel mutex so spam-clicking Restart
+   * Kernel produces exactly one restart at a time.
+   */
+  private async restartHost(
+    panel: vscode.WebviewPanel,
+    kernelId: string | undefined
+  ): Promise<void> {
+    const inFlight = this.restartLocks.get(panel);
+    if (inFlight !== undefined) {
+      log.info("Restart already in progress for panel; awaiting existing");
+      return inFlight;
+    }
+
+    const promise = this.restartHostInner(panel, kernelId);
+    this.restartLocks.set(panel, promise);
+    try {
+      await promise;
+    } finally {
+      this.restartLocks.delete(panel);
+    }
+  }
+
+  private async restartHostInner(
+    panel: vscode.WebviewPanel,
+    kernelId: string | undefined
+  ): Promise<void> {
+    const oldHost = this.hosts.get(panel);
+    const bridge = this.bridges.get(panel);
+    const document = this.documents.get(panel);
+    if (!oldHost || !bridge || !document) {
+      log.warn("restartHost: missing host, bridge, or document for panel");
+      return;
+    }
+
+    log.info(`Kernel restart requested (kernelId=${kernelId ?? "default"})`);
+
+    bridge.beginRestart();
+    bridge.notifyRestarting(kernelId);
+
+    let snapshot = "";
+    try {
+      const saveResult = await oldHost.sendRequest<NotebookSaveResult>(
+        "notebook/save",
+        { notebookId: bridge.getNotebookId() }
+      );
+      snapshot = saveResult.content;
+      log.info(`Captured notebook snapshot (${snapshot.length} bytes)`);
+    } catch (err) {
+      log.error(
+        `Failed to capture notebook snapshot: ${
+          err instanceof Error ? err.message : String(err)
+        }`
+      );
+      bridge.endRestart();
+      vscode.window.showErrorMessage(
+        "Verso: kernel restart aborted because the notebook snapshot could not be captured. Save and reopen the file."
+      );
+      return;
+    }
+
+    log.info("Disposing old host");
+    oldHost.dispose();
+    this.hosts.delete(panel);
+
+    log.info("Spawning new host");
+    const newHost = new HostProcess(this.hostDllPath);
+    try {
+      await newHost.start();
+    } catch (err) {
+      log.error(
+        `New host failed to start: ${err instanceof Error ? err.message : String(err)}`
+      );
+      bridge.endRestart();
+      vscode.window.showErrorMessage(
+        `Verso: kernel restart failed (host did not start): ${
+          err instanceof Error ? err.message : String(err)
+        }. Close and reopen the notebook.`
+      );
+      return;
+    }
+    this.hosts.set(panel, newHost);
+
+    const filePath = document.uri.fsPath;
+    const workingDir = path.dirname(filePath);
+    let result: NotebookOpenResult;
+    try {
+      result = await this.openNotebookInHost(newHost, snapshot, filePath, workingDir, {
+        addDefaultCellIfEmpty: false,
+      });
+    } catch (err) {
+      log.error(
+        `New host failed to reopen notebook: ${
+          err instanceof Error ? err.message : String(err)
+        }`
+      );
+      bridge.endRestart();
+      vscode.window.showErrorMessage(
+        `Verso: kernel restart failed (notebook did not reopen): ${
+          err instanceof Error ? err.message : String(err)
+        }. Close and reopen the notebook.`
+      );
+      return;
+    }
+
+    bridge.setHost(newHost);
+    bridge.setNotebookId(result.notebookId);
+    notebookRegistry.register(document.uri, result.notebookId);
+    hostRegistry.register(document.uri, { host: newHost, bridge });
+
+    bridge.endRestart();
+    bridge.notifyRestarted(kernelId);
+    log.info(`Kernel restart complete (notebookId=${result.notebookId}, ${result.cells.length} cells)`);
   }
 
   // --- Save / Revert ---

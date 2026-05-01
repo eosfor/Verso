@@ -25,6 +25,7 @@ export class BlazorBridge implements vscode.Disposable {
     "variable/changed",
     "extension/consentRequest",
     "extension/changed",
+    "layout/missing",
   ];
 
   private static readonly mutationMethods = new Set([
@@ -44,15 +45,36 @@ export class BlazorBridge implements vscode.Disposable {
 
   private documentUri: vscode.Uri | undefined;
   private notebookId: string | undefined;
+  private readonly webview: vscode.Webview;
+  private host: HostProcess;
+
+  /**
+   * Set while a host restart is in progress. Webview-originated requests await
+   * this promise before being forwarded so they target the new host once it is
+   * ready. Provider-driven requests (snapshot capture, re-open) bypass the gate
+   * because they call {@link HostProcess.sendRequest} directly via {@link getHost}.
+   */
+  private restartInFlight: Promise<void> | undefined;
 
   /** Callback fired when the webview sends a request that mutates the notebook. */
   onDidEdit: (() => void) | undefined;
 
+  /**
+   * Callback fired when a kernel restart is requested, either via the
+   * `kernel/restart` JSON-RPC method from the toolbar or via a
+   * `kernel/restartRequested` notification from the host (e.g. `#!restart`
+   * magic command). The provider owns the kill+respawn lifecycle.
+   */
+  onRestartRequested: ((kernelId: string | undefined) => Promise<void>) | undefined;
+
   constructor(
-    private readonly webview: vscode.Webview,
-    private readonly host: HostProcess,
+    webview: vscode.Webview,
+    host: HostProcess,
     private readonly globalState?: vscode.Memento
   ) {
+    this.webview = webview;
+    this.host = host;
+
     // Listen for messages from the webview (Blazor WASM)
     this.disposables.push(
       webview.onDidReceiveMessage(async (msg) => {
@@ -62,9 +84,17 @@ export class BlazorBridge implements vscode.Disposable {
       })
     );
 
-    // Forward host notifications to the webview
+    this.subscribeHostNotifications();
+  }
+
+  /**
+   * Subscribes notification handlers against the current {@link host}. Called
+   * from the constructor and again from {@link setHost} after a restart so the
+   * fresh process pipes notifications back to the webview.
+   */
+  private subscribeHostNotifications(): void {
     for (const method of this.notificationMethods) {
-      host.onNotification(method, (params) => {
+      this.host.onNotification(method, (params) => {
         this.webview.postMessage({
           type: "jsonrpc-notification",
           method,
@@ -73,8 +103,7 @@ export class BlazorBridge implements vscode.Disposable {
       });
     }
 
-    // Handle file download notifications from the host (export actions)
-    host.onNotification("file/download", (params) => {
+    this.host.onNotification("file/download", (params) => {
       this.handleFileDownload(params).catch((err) => {
         log.error(`file/download error: ${err instanceof Error ? err.message : String(err)}`);
         vscode.window.showErrorMessage(
@@ -82,6 +111,96 @@ export class BlazorBridge implements vscode.Disposable {
         );
       });
     });
+
+    this.host.onNotification("kernel/restartRequested", (params) => {
+      const p = params as { kernelId?: string } | undefined;
+      this.triggerRestart(p?.kernelId);
+    });
+  }
+
+  /**
+   * Routes a restart request through the provider's lifecycle handler. Errors
+   * are logged here because the call site is fire-and-forget (notification
+   * handler) and we do not want unhandled rejections.
+   */
+  private triggerRestart(kernelId: string | undefined): void {
+    if (this.onRestartRequested === undefined) {
+      log.warn("kernel restart requested but no provider handler is registered");
+      return;
+    }
+    this.onRestartRequested(kernelId).catch((err) => {
+      log.error(`kernel restart failed: ${err instanceof Error ? err.message : String(err)}`);
+    });
+  }
+
+  /**
+   * Marks the bridge as gated for the duration of an in-flight restart. The
+   * provider calls {@link beginRestart} before tearing down the host and
+   * {@link endRestart} once the new host is ready. Webview requests received
+   * between those two calls await the restart promise before being forwarded.
+   */
+  beginRestart(): void {
+    if (this.restartInFlight !== undefined) return;
+    let resolveFn!: () => void;
+    this.restartInFlight = new Promise<void>((resolve) => {
+      resolveFn = resolve;
+    });
+    (this.restartInFlight as Promise<void> & { __resolve?: () => void }).__resolve = resolveFn;
+  }
+
+  endRestart(): void {
+    if (this.restartInFlight === undefined) return;
+    const promise = this.restartInFlight as Promise<void> & { __resolve?: () => void };
+    this.restartInFlight = undefined;
+    promise.__resolve?.();
+  }
+
+  /** Whether a host restart is in progress. */
+  get isRestarting(): boolean {
+    return this.restartInFlight !== undefined;
+  }
+
+  /**
+   * Posts a notification to the webview signaling that a kernel restart has
+   * begun. The WASM app shows a status banner.
+   */
+  notifyRestarting(kernelId: string | undefined): void {
+    this.webview.postMessage({
+      type: "jsonrpc-notification",
+      method: "kernel/restarting",
+      params: { kernelId },
+    });
+  }
+
+  /**
+   * Posts a notification to the webview signaling that the kernel restart is
+   * complete. The WASM app clears execution badges and the variable inspector
+   * and updates the status banner.
+   */
+  notifyRestarted(kernelId: string | undefined): void {
+    this.webview.postMessage({
+      type: "jsonrpc-notification",
+      method: "kernel/restarted",
+      params: { kernelId },
+    });
+  }
+
+  /**
+   * Swaps the underlying host process after a restart and re-binds notification
+   * handlers against the new process. The provider calls this once the new
+   * {@link HostProcess} is started and the notebook has been reopened.
+   */
+  setHost(host: HostProcess): void {
+    this.host = host;
+    this.subscribeHostNotifications();
+  }
+
+  /**
+   * Returns the currently bound host. The provider needs this so it can call
+   * {@link HostProcess.sendRequest} for the snapshot capture before disposal.
+   */
+  getHost(): HostProcess {
+    return this.host;
   }
 
   /**
@@ -140,7 +259,27 @@ export class BlazorBridge implements vscode.Disposable {
           p?.ids ?? []
         );
         result = { success: true };
+      } else if (method === "kernel/restart") {
+        // The toolbar action and #!restart magic command both reach the host as
+        // kernel/restart, but the in-process restart cannot release pinned DLL
+        // handles on Windows. Intercept here so the provider can kill and respawn
+        // the host. The original webview request is acknowledged after the
+        // restart completes, matching the prior `{ success: true }` shape.
+        const p = params as { kernelId?: string } | undefined;
+        if (this.onRestartRequested === undefined) {
+          throw new Error("kernel restart handler not registered on bridge");
+        }
+        await this.onRestartRequested(p?.kernelId);
+        result = { success: true };
       } else {
+        // Gate webview requests during an in-flight restart so they target the
+        // new host once it is ready. Provider-driven sendRequest calls (for the
+        // snapshot capture and notebook re-open) bypass this because they go
+        // through getHost().sendRequest directly.
+        if (this.restartInFlight !== undefined) {
+          await this.restartInFlight;
+        }
+
         // Inject notebookId into the forwarded request params
         const enrichedParams =
           this.notebookId && params && typeof params === "object"

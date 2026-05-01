@@ -58,6 +58,15 @@ public sealed class RemoteNotebookService : INotebookService, IAsyncDisposable
     /// <summary>Raised when the host requests extension consent. The UI should show the consent dialog.</summary>
     public event Action? OnExtensionConsentRequested;
 
+    /// <summary>Raised when the supervisor begins a kernel restart. The UI should show a "restarting" status banner.</summary>
+    public event Action<string?>? OnKernelRestarting;
+
+    /// <summary>Raised when the supervisor finishes a kernel restart. The UI should clear execution badges and update status.</summary>
+    public event Action<string?>? OnKernelRestarted;
+
+    /// <summary>Raised when the notebook references a layout that isn't registered yet. The argument is the missing layout id.</summary>
+    public event Action<string>? OnLayoutMissing;
+
     // ── Extension consent state ────────────────────────────────────────
     private string? _pendingConsentRequestId;
     private IReadOnlyList<ExtensionConsentInfo>? _pendingConsentExtensions;
@@ -755,7 +764,62 @@ public sealed class RemoteNotebookService : INotebookService, IAsyncDisposable
             case "output/update":
                 HandleOutputUpdate();
                 break;
+            case "kernel/restarting":
+                HandleKernelRestarting(paramsJson);
+                break;
+            case "kernel/restarted":
+                _ = HandleKernelRestartedAsync(paramsJson);
+                break;
+            case "layout/missing":
+                HandleLayoutMissing(paramsJson);
+                break;
         }
+    }
+
+    private void HandleKernelRestarting(string? paramsJson)
+    {
+        var kernelId = TryReadStringProperty(paramsJson, "kernelId");
+        OnKernelRestarting?.Invoke(kernelId);
+    }
+
+    private async Task HandleKernelRestartedAsync(string? paramsJson)
+    {
+        var kernelId = TryReadStringProperty(paramsJson, "kernelId");
+
+        // The fresh host has reopened the notebook from the snapshot, so re-pull
+        // everything that depends on host state. Variables are guaranteed empty;
+        // extensions loaded via #!nuget or #!extension are gone until those cells
+        // re-execute; layouts and themes default back to the built-in set.
+        try { await RefreshCellListAsync(); } catch { /* swallow — UI stays usable */ }
+        try { await RefreshExtensionDataAsync(); } catch { /* same */ }
+        try { await RefreshThemeDataAsync(); } catch { /* same */ }
+        try { await RefreshVariablesAsync(); } catch { /* same */ }
+
+        OnNotebookChanged?.Invoke();
+        OnVariablesChanged?.Invoke();
+        OnExtensionStatusChanged?.Invoke();
+        OnLayoutChanged?.Invoke();
+        OnKernelRestarted?.Invoke(kernelId);
+    }
+
+    private void HandleLayoutMissing(string? paramsJson)
+    {
+        var layoutId = TryReadStringProperty(paramsJson, "layoutId");
+        if (layoutId is not null)
+            OnLayoutMissing?.Invoke(layoutId);
+    }
+
+    private static string? TryReadStringProperty(string? json, string property)
+    {
+        if (string.IsNullOrEmpty(json)) return null;
+        try
+        {
+            using var doc = JsonDocument.Parse(json);
+            if (doc.RootElement.TryGetProperty(property, out var el) && el.ValueKind == JsonValueKind.String)
+                return el.GetString();
+        }
+        catch (JsonException) { }
+        return null;
     }
 
     private async Task HandleExtensionChangedAsync()

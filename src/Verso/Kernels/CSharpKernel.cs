@@ -43,6 +43,13 @@ public sealed class CSharpKernel : ILanguageKernel
     /// </summary>
     private readonly HashSet<string> _injectedStoreVariables = new(StringComparer.Ordinal);
 
+    /// <summary>
+    /// Tracks assembly paths already added as Roslyn references so a path arriving
+    /// twice (e.g. once from a <c>#!nuget</c> magic command and once from a later
+    /// <c>#r "nuget:"</c> directive) is added at most once.
+    /// </summary>
+    private readonly HashSet<string> _addedAssemblyPaths = new(StringComparer.OrdinalIgnoreCase);
+
     public CSharpKernel() : this(new CSharpKernelOptions()) { }
 
     public CSharpKernel(CSharpKernelOptions options)
@@ -92,6 +99,7 @@ public sealed class CSharpKernel : ILanguageKernel
         _resolver = new NuGetPackageResolver();
         _executionLock = new SemaphoreSlim(1, 1);
         _globals = null;
+        _addedAssemblyPaths.Clear();
         _initialized = true;
 
         return Task.CompletedTask;
@@ -110,24 +118,47 @@ public sealed class CSharpKernel : ILanguageKernel
         var originalErr = Console.Error;
         try
         {
+            // Pick up assembly paths deposited by #!nuget / #!extension magic
+            // commands earlier in this same cell. The store is consumed (removed)
+            // so a subsequent cell's kernel does not re-process the same paths and
+            // attribute the resulting "Installed Packages" feedback to the wrong
+            // cell — see the misattribution bug fixed by removing
+            // ResolvedPackagesStoreKey. Tracking via _addedAssemblyPaths keeps
+            // duplicate paths (across magic command + #r directive) idempotent.
+            var magicCommandPaths = new List<string>();
+            if (context.Variables.TryGet<List<string>>(NuGetMagicCommand.AssemblyStoreKey, out var stored)
+                && stored is { Count: > 0 })
+            {
+                foreach (var p in stored)
+                {
+                    if (_addedAssemblyPaths.Add(p))
+                        magicCommandPaths.Add(p);
+                }
+                context.Variables.Remove(NuGetMagicCommand.AssemblyStoreKey);
+            }
+
             // Process #i "nuget:" source directives and #r "nuget:" package directives
             var (cleanedCode, nugetResults) = await ProcessNuGetReferencesAsync(
                 code, context, context.CancellationToken).ConfigureAwait(false);
 
-            // Add references if any
-            var nugetAssemblyPaths = nugetResults.SelectMany(r => r.AssemblyPaths).ToList();
-            if (nugetAssemblyPaths.Count > 0)
-            {
-                _stateManager!.AddReferences(nugetAssemblyPaths);
-                _workspaceManager!.AddReferences(nugetAssemblyPaths);
+            // Combine: paths from #r directives plus paths from magic commands.
+            var directivePaths = nugetResults
+                .SelectMany(r => r.AssemblyPaths)
+                .Where(p => _addedAssemblyPaths.Add(p))
+                .ToList();
+            var newAssemblyPaths = magicCommandPaths.Concat(directivePaths).ToList();
 
-                // Persist assembly paths to the variable store so other extensions
-                // (e.g. #!sql-connect provider discovery) can load them at runtime
-                var existingPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-                if (context.Variables.TryGet<List<string>>(NuGetMagicCommand.AssemblyStoreKey, out var prior) && prior is not null)
-                    existingPaths.UnionWith(prior);
-                existingPaths.UnionWith(nugetAssemblyPaths);
-                context.Variables.Set(NuGetMagicCommand.AssemblyStoreKey, existingPaths.ToList());
+            if (newAssemblyPaths.Count > 0)
+            {
+                _stateManager!.AddReferences(newAssemblyPaths);
+                _workspaceManager!.AddReferences(newAssemblyPaths);
+
+                // Re-publish assembly paths to the variable store so other
+                // extensions (e.g. #!sql-connect provider discovery) that read
+                // it later in the cell can load them at runtime.
+                context.Variables.Set(
+                    NuGetMagicCommand.AssemblyStoreKey,
+                    _addedAssemblyPaths.ToList());
             }
 
             // Write "Installed Packages" feedback

@@ -15,9 +15,22 @@ public sealed class LayoutManager
     {
         _availableLayouts = availableLayouts ?? throw new ArgumentNullException(nameof(availableLayouts));
 
-        if (defaultLayoutId is not null)
-            SetActiveLayout(defaultLayoutId);
+        if (defaultLayoutId is not null && !TryActivate(defaultLayoutId))
+        {
+            // Layout referenced by the notebook isn't registered yet — typically because
+            // it ships in an extension that the notebook will load via a #!extension or
+            // #!nuget cell. Record the missing id so the host can surface it to the UI;
+            // leave _activeLayout null so the default capability set takes over.
+            MissingLayoutId = defaultLayoutId;
+        }
     }
+
+    /// <summary>
+    /// The layout id requested at construction that could not be resolved against
+    /// the available layouts, or <c>null</c> if everything resolved. Consumers can
+    /// inspect this after construction to decide whether to surface a banner.
+    /// </summary>
+    public string? MissingLayoutId { get; private set; }
 
     /// <summary>
     /// Gets the currently active layout engine, or <c>null</c> if none is active.
@@ -76,7 +89,8 @@ public sealed class LayoutManager
          LayoutCapabilities.MultiSelect);
 
     /// <summary>
-    /// Switches the active layout by layout ID.
+    /// Switches the active layout by layout ID. Throws when the id is unknown.
+    /// Use <see cref="TryActivate"/> when a missing id should not throw.
     /// </summary>
     public void SetActiveLayout(string layoutId)
     {
@@ -85,7 +99,27 @@ public sealed class LayoutManager
             l => string.Equals(l.LayoutId, layoutId, StringComparison.OrdinalIgnoreCase))
             ?? throw new InvalidOperationException($"Layout '{layoutId}' not found.");
         _activeLayout = layout;
+        MissingLayoutId = null;
         OnLayoutChanged?.Invoke(layout);
+    }
+
+    /// <summary>
+    /// Attempts to activate the named layout. Returns <c>true</c> on success, or
+    /// <c>false</c> if no layout with that id is registered. Used by the constructor
+    /// (where a missing layout from the notebook metadata must not abort initialization)
+    /// and by the runtime handler when an unknown layout is requested.
+    /// </summary>
+    public bool TryActivate(string layoutId)
+    {
+        ArgumentNullException.ThrowIfNull(layoutId);
+        var layout = _availableLayouts.FirstOrDefault(
+            l => string.Equals(l.LayoutId, layoutId, StringComparison.OrdinalIgnoreCase));
+        if (layout is null) return false;
+
+        _activeLayout = layout;
+        MissingLayoutId = null;
+        OnLayoutChanged?.Invoke(layout);
+        return true;
     }
 
     /// <summary>
