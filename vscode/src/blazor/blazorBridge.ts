@@ -1,5 +1,6 @@
 import * as vscode from "vscode";
 import { HostProcess } from "../host/hostProcess";
+import { log } from "../log";
 
 /**
  * Bridges communication between the Blazor WASM webview and the Verso.Host process.
@@ -75,7 +76,7 @@ export class BlazorBridge implements vscode.Disposable {
     // Handle file download notifications from the host (export actions)
     host.onNotification("file/download", (params) => {
       this.handleFileDownload(params).catch((err) => {
-        console.error("[BlazorBridge] file/download error:", err);
+        log.error(`file/download error: ${err instanceof Error ? err.message : String(err)}`);
         vscode.window.showErrorMessage(
           `Export failed: ${err instanceof Error ? err.message : String(err)}`
         );

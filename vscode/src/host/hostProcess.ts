@@ -6,6 +6,7 @@ import {
   JsonRpcResponse,
   JsonRpcNotification,
 } from "./protocol";
+import { log } from "../log";
 
 type NotificationHandler = (params: unknown) => void;
 
@@ -37,29 +38,36 @@ export class HostProcess implements vscode.Disposable {
         30000
       );
 
+      log.info(`Spawning Verso.Host: dotnet ${this.hostDllPath}`);
       this.process = spawn("dotnet", [this.hostDllPath], {
         stdio: ["pipe", "pipe", "pipe"],
       });
 
       this.process.on("error", (err) => {
+        log.error(`Verso.Host failed to spawn: ${err.message}`);
         clearTimeout(timeout);
         reject(err);
       });
 
       this.process.on("exit", (code) => {
         if (!this.disposed) {
+          log.warn(`Verso.Host exited unexpectedly with code ${code}`);
           vscode.window.showWarningMessage(
             `Verso host process exited with code ${code}`
           );
+        } else {
+          log.info(`Verso.Host exited with code ${code}`);
         }
         this.cleanup();
       });
 
       if (this.process.stderr) {
         this.process.stderr.on("data", (data: Buffer) => {
-          const text = data.toString().trim();
+          const text = data.toString().trimEnd();
           if (text) {
-            console.error(`[Verso.Host stderr] ${text}`);
+            for (const line of text.split(/\r?\n/)) {
+              log.error(`[Verso.Host] ${line}`);
+            }
           }
         });
       }
@@ -120,7 +128,7 @@ export class HostProcess implements vscode.Disposable {
     try {
       msg = JSON.parse(line);
     } catch {
-      console.error(`[Verso.Host] Failed to parse: ${line}`);
+      log.error(`Failed to parse host message: ${line}`);
       return;
     }
 

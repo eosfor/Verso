@@ -3,13 +3,19 @@ import * as path from "path";
 import { BlazorEditorProvider } from "./blazor/blazorEditorProvider";
 import { registerParticipant } from "./copilot/participant";
 import { registerTools } from "./copilot/tools";
+import { initialize as initializeLog, log } from "./log";
 
 export async function activate(
   context: vscode.ExtensionContext
 ): Promise<void> {
-  const hostDllPath = resolveHostPath(context);
+  initializeLog(context);
+  log.info(`Verso extension activated (v${context.extension.packageJSON.version})`);
 
-  if (!hostDllPath) {
+  const hostDllPath = resolveHostPath(context);
+  if (hostDllPath) {
+    log.info(`Resolved Verso.Host.dll: ${hostDllPath}`);
+  } else {
+    log.error('Could not find Verso.Host.dll. Set "verso.hostPath" in settings to the path of your built Verso.Host.dll.');
     vscode.window.showErrorMessage(
       'Verso: Could not find Verso.Host.dll. Set "verso.hostPath" in settings to the path of your built Verso.Host.dll.'
     );
