@@ -222,6 +222,7 @@ public sealed class HostSession : IAsyncDisposable
             MethodNames.CellRemove => CellHandler.HandleRemove(ns, @params),
             MethodNames.CellMove => CellHandler.HandleMove(ns, @params),
             MethodNames.CellUpdateSource => CellHandler.HandleUpdateSource(ns, @params),
+            MethodNames.CellUpdateMetadata => CellHandler.HandleUpdateMetadata(ns, @params),
             MethodNames.CellChangeType => CellHandler.HandleChangeType(ns, @params),
             MethodNames.CellChangeLanguage => CellHandler.HandleChangeLanguage(ns, @params),
             MethodNames.CellGet => CellHandler.HandleGet(ns, @params),

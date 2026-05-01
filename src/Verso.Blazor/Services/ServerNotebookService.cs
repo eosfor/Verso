@@ -424,6 +424,37 @@ public sealed class ServerNotebookService : INotebookService, IAsyncDisposable
         return Task.CompletedTask;
     }
 
+    public Task SetCellInputCollapsedAsync(Guid cellId, bool collapsed)
+    {
+        var cell = _scaffold?.Cells.FirstOrDefault(c => c.Id == cellId);
+        if (cell is null)
+            return Task.CompletedTask;
+
+        if (collapsed)
+            cell.Metadata[CellViewStateMetadata.InputCollapsedKey] = true;
+        else
+            cell.Metadata.Remove(CellViewStateMetadata.InputCollapsedKey);
+
+        OnNotebookChanged?.Invoke();
+        return Task.CompletedTask;
+    }
+
+    public Task SetCellOutputVisibilityAsync(Guid cellId, string visibility)
+    {
+        var cell = _scaffold?.Cells.FirstOrDefault(c => c.Id == cellId);
+        if (cell is null)
+            return Task.CompletedTask;
+
+        var normalized = NormalizeOutputVisibility(visibility);
+        if (string.Equals(normalized, CellViewStateMetadata.OutputExpanded, StringComparison.Ordinal))
+            cell.Metadata.Remove(CellViewStateMetadata.OutputVisibilityKey);
+        else
+            cell.Metadata[CellViewStateMetadata.OutputVisibilityKey] = normalized;
+
+        OnNotebookChanged?.Invoke();
+        return Task.CompletedTask;
+    }
+
     // ── Execution ──────────────────────────────────────────────────────
 
     public async Task<ExecutionResultDto> ExecuteCellAsync(Guid cellId)
@@ -794,6 +825,15 @@ public sealed class ServerNotebookService : INotebookService, IAsyncDisposable
         var ct = _extensionHost?.GetCellTypes()
             .FirstOrDefault(t => string.Equals(t.CellTypeId, cellType, StringComparison.OrdinalIgnoreCase));
         return ct?.IsEditable ?? true;
+    }
+
+    private static string NormalizeOutputVisibility(string visibility)
+    {
+        if (string.Equals(visibility, CellViewStateMetadata.OutputPreview, StringComparison.OrdinalIgnoreCase))
+            return CellViewStateMetadata.OutputPreview;
+        if (string.Equals(visibility, CellViewStateMetadata.OutputHidden, StringComparison.OrdinalIgnoreCase))
+            return CellViewStateMetadata.OutputHidden;
+        return CellViewStateMetadata.OutputExpanded;
     }
 
     // ── Cell properties ──────────────────────────────────────────────
