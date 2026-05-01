@@ -284,6 +284,43 @@ public class HandlerTests
     }
 
     [TestMethod]
+    public async Task NotebookSaveOpen_RoundTripsCellViewStateMetadata()
+    {
+        var (session, notebookId) = await CreateOpenSession();
+        var ns = GetNs(session, notebookId);
+        var addParams = JsonSerializer.SerializeToElement(
+            new CellAddParams { Type = "code", Language = "csharp", Source = "Console.WriteLine(1);" },
+            JsonRpcMessage.SerializerOptions);
+        var cell = CellHandler.HandleAdd(ns, addParams);
+
+        var updateParams = JsonSerializer.SerializeToElement(
+            new CellUpdateMetadataParams
+            {
+                CellId = cell.Id,
+                Set = new Dictionary<string, JsonElement>
+                {
+                    ["verso.ui.inputCollapsed"] = JsonSerializer.SerializeToElement(true),
+                    ["verso.ui.outputVisibility"] = JsonSerializer.SerializeToElement("preview")
+                }
+            },
+            JsonRpcMessage.SerializerOptions);
+
+        CellHandler.HandleUpdateMetadata(ns, updateParams);
+
+        var saved = await NotebookHandler.HandleSaveAsync(ns);
+
+        var reopenParams = JsonSerializer.SerializeToElement(
+            new NotebookOpenParams { Content = saved.Content, FilePath = "roundtrip.verso" },
+            JsonRpcMessage.SerializerOptions);
+        var reopened = await NotebookHandler.HandleOpenAsync(session, reopenParams);
+        var reopenedNs = GetNs(session, reopened.NotebookId);
+        var reopenedCell = reopenedNs.Scaffold.Cells.Single();
+
+        Assert.AreEqual(true, reopenedCell.Metadata["verso.ui.inputCollapsed"]);
+        Assert.AreEqual("preview", reopenedCell.Metadata["verso.ui.outputVisibility"]);
+    }
+
+    [TestMethod]
     public async Task CellGet_ReturnsCell()
     {
         var (session, notebookId) = await CreateOpenSession();
