@@ -8,6 +8,10 @@ internal static class PlainTextRenderer
 {
     public static IRenderable AsRenderable(CellOutput output, TruncationPolicy policy)
     {
-        return new Text(policy.ClipLines(output.Content ?? string.Empty));
+        // Strip trailing newlines so a single Console.WriteLine doesn't produce
+        // an empty final row inside the bordered output panel. Internal blank
+        // lines authored by the cell are preserved.
+        var content = (output.Content ?? string.Empty).TrimEnd('\r', '\n');
+        return new Text(policy.ClipLines(content));
     }
 }
