@@ -22,6 +22,7 @@ public sealed class ServerNotebookService : INotebookService, IAsyncDisposable
     private ExtensionHost? _extensionHost;
     private string? _filePath;
     private readonly IJSRuntime _jsRuntime;
+    private readonly NotebookServiceOptions _options;
     // Monaco is eagerly loaded at page load (before any notebook opens),
     // so by the time cells render, define.amd is already removed and
     // output scripts cannot interfere with the AMD loader.
@@ -44,9 +45,19 @@ public sealed class ServerNotebookService : INotebookService, IAsyncDisposable
         _pendingConsentExtensions = null;
     }
 
-    public ServerNotebookService(IJSRuntime jsRuntime)
+    public ServerNotebookService(IJSRuntime jsRuntime, NotebookServiceOptions? options = null)
     {
         _jsRuntime = jsRuntime;
+        _options = options ?? new NotebookServiceOptions();
+    }
+
+    private async Task LoadExtensionsAsync()
+    {
+        await _extensionHost!.LoadBuiltInExtensionsAsync();
+
+        var dir = _options.ExtensionsDirectory;
+        if (!string.IsNullOrWhiteSpace(dir) && Directory.Exists(dir))
+            await _extensionHost.LoadFromDirectoryAsync(dir);
     }
 
     // ── State ──────────────────────────────────────────────────────────
@@ -198,7 +209,7 @@ public sealed class ServerNotebookService : INotebookService, IAsyncDisposable
         };
 
         _extensionHost = new ExtensionHost();
-        await _extensionHost.LoadBuiltInExtensionsAsync();
+        await LoadExtensionsAsync();
         WireConsentHandler();
 
         _scaffold = new Scaffold(notebook, _extensionHost);
@@ -217,7 +228,7 @@ public sealed class ServerNotebookService : INotebookService, IAsyncDisposable
         await DisposeCurrentAsync();
 
         _extensionHost = new ExtensionHost();
-        await _extensionHost.LoadBuiltInExtensionsAsync();
+        await LoadExtensionsAsync();
         WireConsentHandler();
 
         var content = await File.ReadAllTextAsync(filePath);
@@ -254,7 +265,7 @@ public sealed class ServerNotebookService : INotebookService, IAsyncDisposable
         await DisposeCurrentAsync();
 
         _extensionHost = new ExtensionHost();
-        await _extensionHost.LoadBuiltInExtensionsAsync();
+        await LoadExtensionsAsync();
         WireConsentHandler();
 
         var serializer = _extensionHost.GetSerializers()

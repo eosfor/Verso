@@ -67,7 +67,14 @@ public static class BlazorHostBuilder
                 circuitOptions.DisconnectedCircuitRetentionPeriod = TimeSpan.FromHours(1);
             });
 
-        // Notebook service (same registration as Verso.Blazor/Program.cs)
+        // Notebook service (same registration as Verso.Blazor/Program.cs).
+        // Forward the --extensions directory so the in-process ExtensionHost
+        // loads third-party assemblies after built-in discovery, matching the
+        // VS Code extension and the CLI repl/run paths.
+        builder.Services.AddSingleton(new NotebookServiceOptions
+        {
+            ExtensionsDirectory = options.ExtensionsDirectory,
+        });
         builder.Services.AddScoped<INotebookService, ServerNotebookService>();
 
         var app = builder.Build();
