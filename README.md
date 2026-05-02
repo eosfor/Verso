@@ -7,7 +7,7 @@
 ![CI](https://img.shields.io/github/actions/workflow/status/DataficationSDK/Verso/verso-ci.yml?branch=main&label=CI)
 [![NuGet](https://img.shields.io/nuget/v/Verso?label=NuGet)](https://www.nuget.org/packages/Verso)
 [![GitHub Release](https://img.shields.io/github/v/release/DataficationSDK/Verso?label=Release)](https://github.com/DataficationSDK/Verso/releases)
-[![VS Code Marketplace](https://img.shields.io/visual-studio-marketplace/v/Datafication.verso-notebook?label=VS%20Code%20Marketplace)](https://marketplace.visualstudio.com/items?itemName=Datafication.verso-notebook)
+[![VS Code Marketplace](https://badgen.net/vs-marketplace/v/Datafication.verso-notebook)](https://marketplace.visualstudio.com/items?itemName=Datafication.verso-notebook)
 
 ![Verso in action](https://datafication.co/assets/verso/UsingVerso32026.gif)
 
