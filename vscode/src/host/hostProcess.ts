@@ -66,7 +66,18 @@ export class HostProcess implements vscode.Disposable {
           const text = data.toString().trimEnd();
           if (text) {
             for (const line of text.split(/\r?\n/)) {
-              log.error(`[Verso.Host] ${line}`);
+              // The host writes JSON-RPC on stdout, so stderr carries everything
+              // else — diagnostics, warnings, and uncaught errors. Lines tagged
+              // with the `[Verso] ` prefix are intentional, structured logs from
+              // the host; treat them as informational. Untagged stderr is most
+              // likely an unhandled exception or runtime panic, so raise it as
+              // a warning rather than the default `error` channel that fired on
+              // every notebook open.
+              if (line.startsWith("[Verso] ")) {
+                log.info(`[Verso.Host] ${line.substring("[Verso] ".length)}`);
+              } else {
+                log.warn(`[Verso.Host] ${line}`);
+              }
             }
           }
         });
