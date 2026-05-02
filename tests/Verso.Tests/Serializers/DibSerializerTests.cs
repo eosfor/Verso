@@ -190,6 +190,61 @@ var x = 1;";
     }
 
     [TestMethod]
+    public async Task Deserialize_LanguageAliases_CsShortform()
+    {
+        var dib = "#!cs\nvar x = 1;";
+
+        var notebook = await _serializer.DeserializeAsync(dib);
+
+        Assert.AreEqual(1, notebook.Cells.Count);
+        Assert.AreEqual("csharp", notebook.Cells[0].Language);
+    }
+
+    [TestMethod]
+    public async Task Deserialize_LanguageAliases_FsShortform()
+    {
+        var dib = "#!fs\nlet x = 1";
+
+        var notebook = await _serializer.DeserializeAsync(dib);
+
+        Assert.AreEqual(1, notebook.Cells.Count);
+        Assert.AreEqual("fsharp", notebook.Cells[0].Language);
+    }
+
+    [TestMethod]
+    public async Task Deserialize_LanguageAliases_Python()
+    {
+        var dib = "#!python\nprint('hi')";
+
+        var notebook = await _serializer.DeserializeAsync(dib);
+
+        Assert.AreEqual(1, notebook.Cells.Count);
+        Assert.AreEqual("python", notebook.Cells[0].Language);
+    }
+
+    [TestMethod]
+    public async Task Deserialize_LanguageAliases_PyShortform()
+    {
+        var dib = "#!py\nprint('hi')";
+
+        var notebook = await _serializer.DeserializeAsync(dib);
+
+        Assert.AreEqual(1, notebook.Cells.Count);
+        Assert.AreEqual("python", notebook.Cells[0].Language);
+    }
+
+    [TestMethod]
+    public async Task Deserialize_LanguageAliases_TypeScript()
+    {
+        var dib = "#!ts\nconst x: number = 1;";
+
+        var notebook = await _serializer.DeserializeAsync(dib);
+
+        Assert.AreEqual(1, notebook.Cells.Count);
+        Assert.AreEqual("typescript", notebook.Cells[0].Language);
+    }
+
+    [TestMethod]
     public async Task Deserialize_UnknownDirective_PreservesAsLanguage()
     {
         var dib = "#!kql\nStormEvents | take 10";

@@ -23,6 +23,19 @@ public static class NotebookHandler
         var extensionHost = new ExtensionHost();
         await extensionHost.LoadBuiltInExtensionsAsync();
 
+        if (!string.IsNullOrWhiteSpace(p.ExtensionsDirectory))
+        {
+            if (Directory.Exists(p.ExtensionsDirectory))
+            {
+                Console.Error.WriteLine($"[Verso] Loading third-party extensions from '{p.ExtensionsDirectory}'");
+                await extensionHost.LoadFromDirectoryAsync(p.ExtensionsDirectory);
+            }
+            else
+            {
+                Console.Error.WriteLine($"[Verso] Extensions directory not found, skipping: '{p.ExtensionsDirectory}'");
+            }
+        }
+
         NotebookModel notebook;
         if (string.IsNullOrWhiteSpace(p.Content))
         {

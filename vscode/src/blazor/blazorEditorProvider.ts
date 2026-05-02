@@ -217,9 +217,13 @@ export class BlazorEditorProvider
     workingDir: string,
     options: { addDefaultCellIfEmpty: boolean }
   ): Promise<NotebookOpenResult> {
+    const extensionsDirectory = vscode.workspace
+      .getConfiguration("verso")
+      .get<string>("extensionsPath") || undefined;
+
     const result = await host.sendRequest<NotebookOpenResult>(
       "notebook/open",
-      { content, filePath, workingDir }
+      { content, filePath, workingDir, extensionsDirectory }
     );
 
     const notebookId = result.notebookId;
