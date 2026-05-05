@@ -153,6 +153,10 @@ public sealed class FakeNotebookService : INotebookService
 
     public Task ClearAllOutputsAsync() => Task.CompletedTask;
 
+    public Task SetCellInputCollapsedAsync(Guid cellId, bool collapsed) => Task.CompletedTask;
+
+    public Task SetCellOutputVisibilityAsync(Guid cellId, string visibility) => Task.CompletedTask;
+
     // ── Execution ──────────────────────────────────────────────────────
 
     public Task<ExecutionResultDto> ExecuteCellAsync(Guid cellId)
