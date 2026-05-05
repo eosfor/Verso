@@ -86,6 +86,16 @@ public sealed class PresentationLayout : ILayoutEngine
                     sb.Append(output.Content);
                     sb.Append("</div>");
                 }
+                else if (output.MimeType.StartsWith("image/", StringComparison.OrdinalIgnoreCase))
+                {
+                    sb.Append("<div class=\"verso-output verso-output--html\">");
+                    sb.Append("<img src=\"data:")
+                      .Append(WebUtility.HtmlEncode(output.MimeType))
+                      .Append(";base64,")
+                      .Append(WebUtility.HtmlEncode(output.Content))
+                      .Append("\" style=\"max-width:100%\" />");
+                    sb.Append("</div>");
+                }
                 else
                 {
                     sb.Append("<div class=\"verso-output verso-output--text\"><pre style=\"margin:0;white-space:pre-wrap;\">");
