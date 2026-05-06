@@ -23,6 +23,7 @@ public static class MethodNames
     public const string CellRemove = "cell/remove";
     public const string CellMove = "cell/move";
     public const string CellUpdateSource = "cell/updateSource";
+    public const string CellUpdateMetadata = "cell/updateMetadata";
     public const string CellChangeType = "cell/changeType";
     public const string CellChangeLanguage = "cell/changeLanguage";
     public const string CellGet = "cell/get";
@@ -44,6 +45,10 @@ public static class MethodNames
     // Output
     public const string OutputClearAll = "output/clearAll";
     public const string OutputUpdate = "output/update";
+
+    // Interactive input
+    public const string InputRequest = "input/request";
+    public const string InputResponse = "input/response";
 
     // Cell interaction
     public const string CellInteract = "cell/interact";

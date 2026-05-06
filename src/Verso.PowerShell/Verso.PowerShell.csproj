@@ -25,6 +25,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Verso.Abstractions\Verso.Abstractions.csproj" />
+    <ProjectReference Include="..\Verso.PowerShellHost\Verso.PowerShellHost.csproj" />
   </ItemGroup>
 
 </Project>

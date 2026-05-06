@@ -6,12 +6,23 @@
      style="grid-column:@((int)Position.X + 1)/span @((int)Position.Width);grid-row:@((int)Position.Y + 1)/span @((int)Position.Height);">
 
     <div class="verso-dashboard-cell-toolbar verso-dashboard-drag-handle">
-        <button class="verso-cell-btn verso-cell-btn--run"
-                @onclick="() => OnRunCell.InvokeAsync(CellData.Id)"
-                disabled="@IsExecuting"
-                title="Run">
-            @if (IsExecuting) { <span class="verso-spinner"></span> } else { <span>&#x25B6;</span> }
-        </button>
+        @if (CanStopExecution)
+        {
+            <button class="verso-cell-btn verso-cell-btn--stop"
+                    @onclick="() => OnCancelCell.InvokeAsync(CellData.Id)"
+                    title="Stop">
+                <span>&#x25A0;</span>
+            </button>
+        }
+        else
+        {
+            <button class="verso-cell-btn verso-cell-btn--run"
+                    @onclick="() => OnRunCell.InvokeAsync(CellData.Id)"
+                    disabled="@IsExecuting"
+                    title="Run">
+                @if (IsExecuting) { <span class="verso-spinner"></span> } else { <span>&#x25B6;</span> }
+            </button>
+        }
         <button class="verso-dashboard-edit-toggle"
                 @onclick="ToggleEdit"
                 title="Toggle Code">
@@ -53,6 +64,12 @@
                         @((MarkupString)output.Content)
                     </div>
                 }
+                else if (output.MimeType.StartsWith("image/"))
+                {
+                    <div class="verso-output verso-output--html">
+                        <img src="@($"data:{output.MimeType};base64,{output.Content}")" style="max-width:100%" />
+                    </div>
+                }
                 else
                 {
                     <div class="verso-output verso-output--text">
@@ -77,6 +94,7 @@
     [Parameter] public CellContainerInfo Position { get; set; } = default!;
     [Parameter] public bool IsExecuting { get; set; }
     [Parameter] public EventCallback<Guid> OnRunCell { get; set; }
+    [Parameter] public EventCallback<Guid> OnCancelCell { get; set; }
     [Parameter] public EventCallback<(Guid CellId, string Source)> OnSourceChanged { get; set; }
     [Parameter] public EventCallback<(Guid CellId, int ColSpan, int RowSpan)> OnResized { get; set; }
     [Parameter] public EventCallback<(Guid CellId, int Col, int Row)> OnMoved { get; set; }
@@ -88,6 +106,8 @@
 
     private string _elementId => $"verso-cell-{CellData.Id}";
     private string EditorLanguage => CellData.Type == "markdown" ? "markdown" : (CellData.Language ?? "csharp");
+    private bool CanStopExecution => IsExecuting &&
+        string.Equals(CellData.Language, "powershell", StringComparison.OrdinalIgnoreCase);
 
     private void ToggleEdit() => _showCode = !_showCode;
 

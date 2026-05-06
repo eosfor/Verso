@@ -1,4 +1,5 @@
 using Verso.Abstractions;
+using Verso.PowerShellHost;
 
 namespace Verso.PowerShell.Kernel;
 
@@ -72,8 +73,35 @@ public sealed class PowerShellKernel : ILanguageKernel
                 _variableBridge!.InjectFromStore(context.Variables);
             }
 
-            var result = _runspaceManager!.Invoke(code, context.CancellationToken);
             var outputs = new List<CellOutput>();
+
+            Task AppendHostOutput(PowerShellHostOutput output)
+            {
+                var cellOutput = new CellOutput(
+                    output.MimeType,
+                    output.Content,
+                    output.IsError,
+                    output.ErrorName);
+
+                outputs.Add(cellOutput);
+                return context.WriteOutputAsync(cellOutput);
+            }
+
+            Task<string?> RequestHostInput(PowerShellHostInputRequest request)
+            {
+                return context.RequestInputAsync(
+                    request.Prompt,
+                    request.IsPassword,
+                    context.CancellationToken);
+            }
+
+            var result = _runspaceManager!.Invoke(
+                code,
+                context.CancellationToken,
+                AppendHostOutput,
+                RequestHostInput);
+
+            context.CancellationToken.ThrowIfCancellationRequested();
 
             // Output stream (objects)
             if (result.OutputLines.Count > 0)

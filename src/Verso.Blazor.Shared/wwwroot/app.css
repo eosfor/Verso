@@ -701,6 +701,7 @@ html, body {
 .verso-cell-toolbar-actions {
     margin-left: auto;
     display: flex;
+    align-items: center;
     gap: 2px;
 }
 
@@ -716,6 +717,25 @@ html, body {
     color: var(--verso-editor-line-number, #858585);
     cursor: pointer;
     font-size: 14px;
+    flex: 0 0 auto;
+}
+
+.verso-cell-btn--mode {
+    width: auto;
+    min-width: 0;
+    height: 22px;
+    padding: 0 8px;
+    font-size: 10px;
+    line-height: 1;
+    white-space: nowrap;
+    border-radius: 999px;
+    background: var(--verso-cell-output-background, #F5F5F5);
+    color: var(--verso-editor-line-number, #858585);
+}
+
+.verso-cell-btn--mode:hover:not(:disabled) {
+    background: var(--verso-toolbar-button-hover, #E0E0E0);
+    color: var(--verso-editor-foreground, #1E1E1E);
 }
 
 .verso-cell-btn:hover:not(:disabled) {
@@ -730,6 +750,10 @@ html, body {
 
 .verso-cell-btn--run {
     color: var(--verso-status-success, #28A745);
+}
+
+.verso-cell-btn--stop {
+    color: var(--verso-status-error, #DC3545);
 }
 
 .verso-cell-btn--delete {
@@ -787,10 +811,55 @@ html, body {
     opacity: 0.6;
 }
 
+.verso-cell-source-preview {
+    margin: 0 var(--verso-cell-padding, 12px);
+    padding: 10px 12px;
+    border: 1px solid var(--verso-cell-border, rgba(127, 127, 127, 0.18));
+    border-radius: 6px;
+    background: color-mix(in srgb, var(--verso-editor-background, #1E1E1E) 94%, var(--verso-editor-line-number, #858585));
+}
+
+.verso-cell-source-preview pre {
+    margin: 0;
+    white-space: pre-wrap;
+    word-break: break-word;
+    font-family: var(--verso-editor-font-family, monospace);
+    font-size: var(--verso-editor-font-size, 13px);
+    line-height: 1.45;
+    color: var(--verso-editor-foreground, #D4D4D4);
+}
+
+.verso-cell-output-summary {
+    margin: 0 var(--verso-cell-padding, 12px) var(--verso-cell-padding, 12px);
+    padding: 8px 12px;
+    border: 1px dashed var(--verso-cell-border, rgba(127, 127, 127, 0.18));
+    border-radius: 6px;
+    color: var(--verso-editor-line-number, #858585);
+    font-size: 12px;
+}
+
 /* === Cell Outputs === */
 
 .verso-cell-outputs {
     padding: var(--verso-output-padding, 8px) var(--verso-cell-padding, 12px) var(--verso-cell-padding, 12px);
+}
+
+.verso-cell-outputs--preview .verso-output--text pre,
+.verso-cell-rendered-input--preview .verso-output--text pre,
+.verso-cell-outputs--preview .verso-output-error-content,
+.verso-cell-rendered-input--preview .verso-output-error-content,
+.verso-cell-outputs--preview .verso-output-error-stack,
+.verso-cell-rendered-input--preview .verso-output-error-stack {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 5;
+    overflow: hidden;
+}
+
+.verso-cell-outputs--preview .verso-output--html,
+.verso-cell-rendered-input--preview .verso-output--html {
+    max-height: 160px;
+    overflow: hidden;
 }
 
 .verso-output {

@@ -31,6 +31,9 @@ bld/
 *.rsuser
 *.sln.docstates
 
+## Local VS Code workspace settings
+.vscode/
+
 ## Rider
 .idea/
 
@@ -48,3 +51,6 @@ coverage/
 ## VS Code extension — Blazor WASM publish output
 vscode/blazor-wasm/
 /samples/internal-testing
+
+## Local scratch notes and plans
+x.*

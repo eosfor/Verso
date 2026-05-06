@@ -324,6 +324,73 @@ public sealed class RemoteNotebookService : INotebookService, IAsyncDisposable
         OnCellExecuted?.Invoke();
     }
 
+    public async Task SetCellInputCollapsedAsync(Guid cellId, bool collapsed)
+    {
+        var cell = _cells.FirstOrDefault(c => c.Id == cellId);
+        if (cell is null)
+            return;
+
+        Dictionary<string, object?>? set = null;
+        List<string>? remove = null;
+
+        if (collapsed)
+        {
+            cell.Metadata[CellViewStateMetadata.InputCollapsedKey] = true;
+            set = new Dictionary<string, object?>
+            {
+                [CellViewStateMetadata.InputCollapsedKey] = true
+            };
+        }
+        else
+        {
+            cell.Metadata.Remove(CellViewStateMetadata.InputCollapsedKey);
+            remove = new List<string> { CellViewStateMetadata.InputCollapsedKey };
+        }
+
+        await _bridge.RequestVoidAsync("cell/updateMetadata", new
+        {
+            cellId = cellId.ToString(),
+            set,
+            remove
+        });
+
+        OnNotebookChanged?.Invoke();
+    }
+
+    public async Task SetCellOutputVisibilityAsync(Guid cellId, string visibility)
+    {
+        var cell = _cells.FirstOrDefault(c => c.Id == cellId);
+        if (cell is null)
+            return;
+
+        var normalized = NormalizeOutputVisibility(visibility);
+        Dictionary<string, object?>? set = null;
+        List<string>? remove = null;
+
+        if (string.Equals(normalized, CellViewStateMetadata.OutputExpanded, StringComparison.Ordinal))
+        {
+            cell.Metadata.Remove(CellViewStateMetadata.OutputVisibilityKey);
+            remove = new List<string> { CellViewStateMetadata.OutputVisibilityKey };
+        }
+        else
+        {
+            cell.Metadata[CellViewStateMetadata.OutputVisibilityKey] = normalized;
+            set = new Dictionary<string, object?>
+            {
+                [CellViewStateMetadata.OutputVisibilityKey] = normalized
+            };
+        }
+
+        await _bridge.RequestVoidAsync("cell/updateMetadata", new
+        {
+            cellId = cellId.ToString(),
+            set,
+            remove
+        });
+
+        OnNotebookChanged?.Invoke();
+    }
+
     // ── Execution ───────────────────────────────────────────────────────
 
     public async Task<ExecutionResultDto> ExecuteCellAsync(Guid cellId)
@@ -408,6 +475,11 @@ public sealed class RemoteNotebookService : INotebookService, IAsyncDisposable
         }
 
         return dtos;
+    }
+
+    public async Task CancelExecutionAsync()
+    {
+        await _bridge.RequestVoidAsync("execution/cancel", null);
     }
 
     public async Task RestartKernelAsync()
@@ -643,6 +715,15 @@ public sealed class RemoteNotebookService : INotebookService, IAsyncDisposable
         return !string.Equals(cellType, "parameters", StringComparison.OrdinalIgnoreCase);
     }
 
+    private static string NormalizeOutputVisibility(string visibility)
+    {
+        if (string.Equals(visibility, CellViewStateMetadata.OutputPreview, StringComparison.OrdinalIgnoreCase))
+            return CellViewStateMetadata.OutputPreview;
+        if (string.Equals(visibility, CellViewStateMetadata.OutputHidden, StringComparison.OrdinalIgnoreCase))
+            return CellViewStateMetadata.OutputHidden;
+        return CellViewStateMetadata.OutputExpanded;
+    }
+
     // ── Cell properties ──────────────────────────────────────────────
 
     public async Task<IReadOnlyList<PropertySectionResult>> GetCellPropertySectionsAsync(Guid cellId)
@@ -762,7 +843,7 @@ public sealed class RemoteNotebookService : INotebookService, IAsyncDisposable
                 _ = HandleExtensionChangedAsync();
                 break;
             case "output/update":
-                HandleOutputUpdate();
+                HandleOutputUpdate(paramsJson);
                 break;
             case "kernel/restarting":
                 HandleKernelRestarting(paramsJson);
@@ -830,8 +911,36 @@ public sealed class RemoteNotebookService : INotebookService, IAsyncDisposable
         OnNotebookChanged?.Invoke();
     }
 
-    private void HandleOutputUpdate()
+    private void HandleOutputUpdate(string? paramsJson)
     {
+        if (!string.IsNullOrWhiteSpace(paramsJson))
+        {
+            try
+            {
+                var notif = JsonSerializer.Deserialize<OutputUpdateNotification>(
+                    paramsJson,
+                    new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+
+                if (notif is not null && Guid.TryParse(notif.CellId, out var cellId))
+                {
+                    var cell = _cells.FirstOrDefault(c => c.Id == cellId);
+                    if (cell is not null)
+                    {
+                        cell.Outputs.Clear();
+                        foreach (var output in notif.Outputs ?? Enumerable.Empty<CellOutputDto>())
+                            cell.Outputs.Add(MapOutputFromDto(output));
+
+                        OnOutputUpdated?.Invoke();
+                        return;
+                    }
+                }
+            }
+            catch (JsonException)
+            {
+                // Fall back to a full refresh below.
+            }
+        }
+
         _ = RefreshCellListAsync().ContinueWith(_ => OnOutputUpdated?.Invoke());
     }
 
@@ -1210,6 +1319,12 @@ public sealed class RemoteNotebookService : INotebookService, IAsyncDisposable
     {
         public string CellId { get; set; } = "";
         public string State { get; set; } = "";
+    }
+
+    private sealed class OutputUpdateNotification
+    {
+        public string CellId { get; set; } = "";
+        public List<CellOutputDto>? Outputs { get; set; }
     }
 
     private sealed class SaveResponse
