@@ -10,9 +10,16 @@ using NuGet.Versioning;
 namespace Verso.Kernels;
 
 /// <summary>
-/// Result of resolving a NuGet package, including the resolved version and assembly paths.
+/// Result of resolving a NuGet package, including the resolved version, assembly paths,
+/// and the full transitive set of packages that were resolved (id + version) — useful
+/// for diagnostics when a runtime assembly load fails and the user needs to see what
+/// actually got pulled in.
 /// </summary>
-internal sealed record NuGetResolveResult(string PackageId, string ResolvedVersion, IReadOnlyList<string> AssemblyPaths);
+internal sealed record NuGetResolveResult(
+    string PackageId,
+    string ResolvedVersion,
+    IReadOnlyList<string> AssemblyPaths,
+    IReadOnlyList<(string Id, string Version)> ResolvedPackages);
 
 /// <summary>
 /// Downloads NuGet packages and their transitive dependencies, extracts DLLs from the
@@ -22,8 +29,11 @@ internal sealed record NuGetResolveResult(string PackageId, string ResolvedVersi
 /// </summary>
 internal sealed class NuGetPackageResolver
 {
+    // Cache path includes a schema suffix so a resolver schema change (e.g. extracting
+    // runtimes/{rid}/lib/ assemblies in addition to lib/) invalidates older caches that
+    // contain only the lib/ stubs.
     internal static readonly string CacheRoot =
-        Path.Combine(Path.GetTempPath(), "verso-nuget-packages", $"net{Environment.Version.Major}.0");
+        Path.Combine(Path.GetTempPath(), "verso-nuget-packages", $"net{Environment.Version.Major}.0-v2");
 
     private readonly List<SourceRepository> _sources;
 
@@ -159,19 +169,23 @@ internal sealed class NuGetPackageResolver
         ArgumentNullException.ThrowIfNull(packageId);
 
         var allAssemblyPaths = new List<string>();
+        var resolvedPackages = new List<(string Id, string Version)>();
         var visited = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
         var resolvedVersion = await ResolveWithDependenciesAsync(
-            packageId, version, allAssemblyPaths, visited, depth: 0, ct).ConfigureAwait(false);
+            packageId, version, allAssemblyPaths, resolvedPackages, visited, depth: 0, ct).ConfigureAwait(false);
 
-        return new NuGetResolveResult(packageId, resolvedVersion, allAssemblyPaths);
+        return new NuGetResolveResult(packageId, resolvedVersion, allAssemblyPaths, resolvedPackages);
     }
 
     /// <summary>
-    /// Recursively resolves a package and its dependencies, collecting all assembly paths.
+    /// Recursively resolves a package and its dependencies, collecting all assembly paths
+    /// and a flat list of (id, version) pairs for every package that was actually resolved
+    /// (i.e. not skipped by <see cref="IsFrameworkPackage"/> or already visited).
     /// </summary>
     private async Task<string> ResolveWithDependenciesAsync(
         string packageId, string? version, List<string> allPaths,
+        List<(string Id, string Version)> resolvedPackages,
         HashSet<string> visited, int depth, CancellationToken ct)
     {
         if (depth > MaxDependencyDepth) return version ?? "";
@@ -182,11 +196,12 @@ internal sealed class NuGetPackageResolver
             await DownloadSinglePackageAsync(packageId, version, ct).ConfigureAwait(false);
 
         allPaths.AddRange(assemblyPaths);
+        resolvedPackages.Add((packageId, resolvedVersion));
 
         foreach (var (depId, depMinVersion) in dependencies)
         {
             await ResolveWithDependenciesAsync(
-                depId, depMinVersion, allPaths, visited, depth + 1, ct).ConfigureAwait(false);
+                depId, depMinVersion, allPaths, resolvedPackages, visited, depth + 1, ct).ConfigureAwait(false);
         }
 
         return resolvedVersion;
@@ -320,20 +335,31 @@ internal sealed class NuGetPackageResolver
 
         using (var reader = new PackageArchiveReader(tempNupkg))
         {
-            // Extract managed DLLs from lib/
+            // Extract managed DLLs from lib/ (may be reference/stub assemblies for packages
+            // that ship platform-specific implementations under runtimes/{rid}/lib/).
             assemblyPaths = await ExtractDllsAsync(reader, packageDir, ct).ConfigureAwait(false);
-
-            // Register the directory so cross-package assembly references resolve
-            if (assemblyPaths.Count > 0)
-                NuGetRuntimeResolver.AddManagedSearchDirectory(packageDir);
 
             // Read dependencies for our target framework
             dependencies = await ReadDependenciesAsync(reader, ct).ConfigureAwait(false);
         }
 
-        // Extract native libraries after closing the PackageArchiveReader to avoid
-        // file contention — uses ZipFile.OpenRead() directly for reliable extraction.
+        // Extract native and runtime-managed libraries after closing the PackageArchiveReader
+        // to avoid file contention — uses ZipFile.OpenRead() directly for reliable extraction.
         ExtractNativeLibs(tempNupkg, packageDir);
+
+        // Overwrite any lib/ stubs with the platform-specific runtime implementation
+        // from runtimes/{rid}/lib/{tfm}/ when present. Required for packages like
+        // Microsoft.Data.SqlClient whose lib/ DLL is a reference assembly only.
+        var runtimeManagedPaths = ExtractRuntimeManagedLibs(tempNupkg, packageDir);
+        foreach (var path in runtimeManagedPaths)
+        {
+            if (!assemblyPaths.Contains(path, StringComparer.OrdinalIgnoreCase))
+                assemblyPaths.Add(path);
+        }
+
+        // Register the directory so cross-package assembly references resolve
+        if (assemblyPaths.Count > 0)
+            NuGetRuntimeResolver.AddManagedSearchDirectory(packageDir);
 
         // Cache the dependency list (so meta-packages with 0 DLLs are recognized as cached)
         WriteCachedDependencies(depsFile, dependencies);
@@ -448,6 +474,80 @@ internal sealed class NuGetPackageResolver
     }
 
     /// <summary>
+    /// Extracts platform-specific managed assemblies from <c>runtimes/{rid}/lib/{tfm}/</c>
+    /// folders. Some packages (e.g. <c>Microsoft.Data.SqlClient</c>) ship a reference/stub
+    /// assembly under <c>lib/{tfm}/</c> and the actual implementation under
+    /// <c>runtimes/{rid}/lib/{tfm}/</c>. Without this pass, the stub is loaded and provider
+    /// initialisation fails at runtime.
+    ///
+    /// For each DLL filename, the most-specific (RID, TFM) winner is selected: RID
+    /// specificity (using <see cref="NuGetRuntimeResolver.GetRidFallbacks"/>) takes
+    /// precedence over TFM specificity (using <see cref="PreferredFrameworks"/>), matching
+    /// how the .NET runtime resolves runtime assets. The selected DLL is written into
+    /// <paramref name="packageDir"/>, overwriting any same-named lib/ stub.
+    /// </summary>
+    private static List<string> ExtractRuntimeManagedLibs(string nupkgPath, string packageDir)
+    {
+        var rids = NuGetRuntimeResolver.GetRidFallbacks();
+        var tfms = PreferredFrameworks;
+        var extracted = new List<string>();
+
+        // Per-filename best candidate: lower (ridIndex, tfmIndex) wins.
+        var best = new Dictionary<string, (int RidIndex, int TfmIndex, ZipArchiveEntry Entry)>(
+            StringComparer.OrdinalIgnoreCase);
+
+        using var archive = ZipFile.OpenRead(nupkgPath);
+        foreach (var entry in archive.Entries)
+        {
+            var fullName = entry.FullName;
+            if (!fullName.StartsWith("runtimes/", StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            // Expect: runtimes/{rid}/lib/{tfm}/{file}.dll
+            var segments = fullName.Split('/');
+            if (segments.Length < 5 ||
+                !segments[2].Equals("lib", StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            var entryRid = segments[1];
+            var entryTfm = segments[3];
+            var fileName = segments[^1];
+
+            if (!fileName.EndsWith(".dll", StringComparison.OrdinalIgnoreCase) || entry.Length == 0)
+                continue;
+
+            var ridIndex = Array.FindIndex(rids, r => r.Equals(entryRid, StringComparison.OrdinalIgnoreCase));
+            if (ridIndex < 0) continue;
+
+            var tfmIndex = Array.FindIndex(tfms, t => t.Equals(entryTfm, StringComparison.OrdinalIgnoreCase));
+            if (tfmIndex < 0) continue;
+
+            if (!best.TryGetValue(fileName, out var current) ||
+                ridIndex < current.RidIndex ||
+                (ridIndex == current.RidIndex && tfmIndex < current.TfmIndex))
+            {
+                best[fileName] = (ridIndex, tfmIndex, entry);
+            }
+        }
+
+        foreach (var (fileName, candidate) in best)
+        {
+            try
+            {
+                var destPath = Path.Combine(packageDir, fileName);
+                candidate.Entry.ExtractToFile(destPath, overwrite: true);
+                extracted.Add(destPath);
+            }
+            catch
+            {
+                // Best effort — skip files that can't be extracted
+            }
+        }
+
+        return extracted;
+    }
+
+    /// <summary>
     /// Registers previously-extracted managed and native library directories from a cached
     /// package with the <see cref="NuGetRuntimeResolver"/>.
     /// </summary>
@@ -524,51 +624,28 @@ internal sealed class NuGetPackageResolver
     }
 
     /// <summary>
-    /// Assembly names present in the Trusted Platform Assemblies list, built lazily on
-    /// first access.  Packages whose primary assembly is already in the TPA can be
-    /// skipped because the runtime will resolve them from the shared framework.
-    /// </summary>
-    private static readonly Lazy<HashSet<string>> TpaAssemblyNames = new(BuildTpaAssemblyNames);
-
-    private static HashSet<string> BuildTpaAssemblyNames()
-    {
-        var set = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        var tpa = AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES") as string;
-        if (tpa is not null)
-        {
-            var separator = OperatingSystem.IsWindows() ? ';' : ':';
-            foreach (var path in tpa.Split(separator))
-                set.Add(Path.GetFileNameWithoutExtension(path));
-        }
-        return set;
-    }
-
-    /// <summary>
     /// Returns <c>true</c> if the package is part of the .NET shared framework and
     /// should not be downloaded (already available at runtime).
     /// <para>
-    /// Core runtime packages (<c>Microsoft.NETCore.*</c>, <c>NETStandard.*</c>) are
-    /// always skipped.  For <c>System.*</c> and <c>Microsoft.Extensions.*</c> packages,
-    /// we check the TPA list so they are correctly downloaded when running in a plain
-    /// console host (where they are NOT in the shared framework) but skipped in ASP.NET
-    /// Core hosts (where they are).
+    /// Only core runtime meta-packages (<c>Microsoft.NETCore.*</c>, <c>NETStandard.*</c>)
+    /// are skipped — these contain no real assemblies, only target-framework metadata.
+    /// </para>
+    /// <para>
+    /// <c>System.*</c> and <c>Microsoft.Extensions.*</c> packages are NOT skipped, even
+    /// if their assembly names happen to appear in the TPA. The TPA reflects whatever
+    /// version the host process happens to have loaded, which may be older than what a
+    /// dependent package was compiled against (e.g. Microsoft.Data.SqlClient 7.0.1
+    /// requires <c>System.Configuration.ConfigurationManager 9.0.0.0</c> while the host
+    /// may only carry 8.x). The runtime preferentially resolves from the TPA, so most
+    /// downloads remain unused; the <see cref="NuGetRuntimeResolver"/> handler only
+    /// loads a downloaded copy when the TPA cannot satisfy a strict-version request.
     /// </para>
     /// </summary>
     private static bool IsFrameworkPackage(string packageId)
     {
-        // Always skip core runtime meta-packages
-        if (packageId.StartsWith("Microsoft.NETCore.", StringComparison.OrdinalIgnoreCase) ||
-            packageId.StartsWith("NETStandard.", StringComparison.OrdinalIgnoreCase) ||
-            packageId.Equals("NETStandard.Library", StringComparison.OrdinalIgnoreCase))
-            return true;
-
-        // For System.* and Microsoft.Extensions.* packages, only skip if the assembly
-        // is already present in the TPA (i.e. the shared framework provides it).
-        if (packageId.StartsWith("System.", StringComparison.OrdinalIgnoreCase) ||
-            packageId.StartsWith("Microsoft.Extensions.", StringComparison.OrdinalIgnoreCase))
-            return TpaAssemblyNames.Value.Contains(packageId);
-
-        return false;
+        return packageId.StartsWith("Microsoft.NETCore.", StringComparison.OrdinalIgnoreCase) ||
+               packageId.StartsWith("NETStandard.", StringComparison.OrdinalIgnoreCase) ||
+               packageId.Equals("NETStandard.Library", StringComparison.OrdinalIgnoreCase);
     }
 
     /// <summary>

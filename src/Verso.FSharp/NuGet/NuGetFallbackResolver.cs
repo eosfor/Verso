@@ -477,33 +477,16 @@ internal sealed class NuGetFallbackResolver
         }
     }
 
-    private static readonly Lazy<HashSet<string>> TpaAssemblyNames = new(BuildTpaAssemblyNames);
-
-    private static HashSet<string> BuildTpaAssemblyNames()
-    {
-        var set = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        var tpa = AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES") as string;
-        if (tpa is not null)
-        {
-            var separator = OperatingSystem.IsWindows() ? ';' : ':';
-            foreach (var path in tpa.Split(separator))
-                set.Add(Path.GetFileNameWithoutExtension(path));
-        }
-        return set;
-    }
-
+    // System.* and Microsoft.Extensions.* packages are intentionally NOT skipped here:
+    // the TPA may carry an older version than what a depending package was compiled
+    // against (e.g. Microsoft.Data.SqlClient 7.0.1 → System.Configuration.ConfigurationManager
+    // 9.0.0.0). The runtime resolves from the TPA first, so most downloads remain unused;
+    // they are only loaded when a strict-version request can't be satisfied otherwise.
     private static bool IsFrameworkPackage(string packageId)
     {
-        if (packageId.StartsWith("Microsoft.NETCore.", StringComparison.OrdinalIgnoreCase) ||
-            packageId.StartsWith("NETStandard.", StringComparison.OrdinalIgnoreCase) ||
-            packageId.Equals("NETStandard.Library", StringComparison.OrdinalIgnoreCase))
-            return true;
-
-        if (packageId.StartsWith("System.", StringComparison.OrdinalIgnoreCase) ||
-            packageId.StartsWith("Microsoft.Extensions.", StringComparison.OrdinalIgnoreCase))
-            return TpaAssemblyNames.Value.Contains(packageId);
-
-        return false;
+        return packageId.StartsWith("Microsoft.NETCore.", StringComparison.OrdinalIgnoreCase) ||
+               packageId.StartsWith("NETStandard.", StringComparison.OrdinalIgnoreCase) ||
+               packageId.Equals("NETStandard.Library", StringComparison.OrdinalIgnoreCase);
     }
 
     /// <summary>

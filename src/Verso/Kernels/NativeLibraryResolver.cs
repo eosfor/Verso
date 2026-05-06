@@ -22,6 +22,17 @@ internal static class NuGetRuntimeResolver
     private static bool _registered;
 
     /// <summary>
+    /// Private ALC used as a fallback when loading a managed NuGet assembly into the
+    /// default ALC fails because the host's TPA already contains a different version
+    /// of the same simple-named assembly. The runtime accepts cross-ALC Assembly
+    /// objects returned from the <see cref="AssemblyLoadContext.Resolving"/> event,
+    /// so the caller still gets a binding for the strict-version request.
+    /// </summary>
+    private static AssemblyLoadContext? _isolationContext;
+    private static AssemblyLoadContext IsolationContext =>
+        _isolationContext ??= new AssemblyLoadContext("VersoNuGetIsolation", isCollectible: false);
+
+    /// <summary>
     /// Adds a directory containing managed assemblies (DLLs from <c>lib/</c>) to the search path.
     /// </summary>
     internal static void AddManagedSearchDirectory(string directory)
@@ -68,19 +79,58 @@ internal static class NuGetRuntimeResolver
             dirs = ManagedSearchDirs.ToArray();
         }
 
+        var fileName = $"{name.Name}.dll";
+        var candidates = new List<string>();
         foreach (var dir in dirs)
         {
-            var path = Path.Combine(dir, $"{name.Name}.dll");
+            var path = Path.Combine(dir, fileName);
             if (File.Exists(path))
+                candidates.Add(path);
+        }
+
+        if (candidates.Count == 0)
+            return null;
+
+        // Prefer a candidate whose immediate parent directory matches the requested
+        // major.minor.patch — NuGet package directories follow the convention
+        // .../{packageId}/{version}/{file}.dll, so the parent dir name IS the package
+        // version. Without this preference, returning the first match (potentially an
+        // older version) makes the runtime binder reject the load.
+        if (name.Version is not null)
+        {
+            var versionStr = name.Version.ToString(3);
+            candidates = candidates
+                .OrderByDescending(p =>
+                    string.Equals(
+                        Path.GetFileName(Path.GetDirectoryName(p)),
+                        versionStr,
+                        StringComparison.Ordinal) ? 1 : 0)
+                .ToList();
+        }
+
+        // First try to load into the requesting context (typically the default ALC).
+        // If every candidate hits a FileLoadException with HRESULT 0x80131040 — "the
+        // located assembly's manifest definition does not match the assembly reference"
+        // — that means the host's TPA carries a different version of the same simple
+        // name. The default ALC refuses to hold both, but the runtime accepts cross-ALC
+        // Assembly objects returned from a Resolving event, so we fall back to a private
+        // isolation ALC. This unblocks packages whose strict-version requirement exceeds
+        // what the host's TPA happens to carry (e.g. SqlClient binding to
+        // System.Configuration.ConfigurationManager 9.0.0.0 when TPA has 8.0.0.0).
+        var sawTpaConflict = false;
+        foreach (var candidate in candidates)
+        {
+            try { return context.LoadFromAssemblyPath(candidate); }
+            catch (FileLoadException) { sawTpaConflict = true; }
+            catch { /* try next */ }
+        }
+
+        if (sawTpaConflict)
+        {
+            foreach (var candidate in candidates)
             {
-                try
-                {
-                    return context.LoadFromAssemblyPath(path);
-                }
-                catch
-                {
-                    // Try next directory
-                }
+                try { return IsolationContext.LoadFromAssemblyPath(candidate); }
+                catch { /* try next */ }
             }
         }
 
@@ -166,7 +216,7 @@ internal static class NuGetRuntimeResolver
         };
 
         if (OperatingSystem.IsMacOS())
-            return new[] { $"osx-{arch}", "osx" };
+            return new[] { $"osx-{arch}", "osx", "unix" };
 
         if (OperatingSystem.IsLinux())
             return new[] { $"linux-{arch}", "linux", "unix" };

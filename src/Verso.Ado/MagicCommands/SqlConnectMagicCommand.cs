@@ -93,10 +93,44 @@ public sealed class SqlConnectMagicCommand : IMagicCommand
         // Discover provider (pass NuGet assembly paths so unloaded packages can be found)
         context.Variables.TryGet<List<string>>("__verso_nuget_assemblies", out var nugetPaths);
         var (factory, providerName, providerError) = ProviderDiscovery.Discover(resolvedCs!, resolvedProvider, nugetPaths);
-        if (providerError is not null)
+
+        // If discovery failed and an explicit provider was given, attempt to auto-resolve
+        // it as a NuGet package — but only if the provider's DLL isn't already in the
+        // assembly path list. ADO.NET provider invariant names match their package IDs by
+        // convention (Microsoft.Data.SqlClient, Microsoft.Data.Sqlite, Npgsql, MySql.Data,
+        // ...), so users shouldn't have to run a separate `#r "nuget:..."` cell first. If
+        // the DLL IS already in the path list, discovery failed for a different reason
+        // (e.g. type initializer exception) and re-downloading won't help.
+        var providerAlreadyLoaded = nugetPaths is { Count: > 0 } && nugetPaths.Any(p =>
+            string.Equals(
+                Path.GetFileNameWithoutExtension(p),
+                resolvedProvider,
+                StringComparison.OrdinalIgnoreCase));
+
+        if (factory is null && !string.IsNullOrWhiteSpace(resolvedProvider) && !providerAlreadyLoaded)
+        {
+            var nugetCommand = context.ExtensionHost.GetLoadedExtensions()
+                .OfType<IMagicCommand>()
+                .FirstOrDefault(m => string.Equals(m.Name, "nuget", StringComparison.OrdinalIgnoreCase));
+
+            if (nugetCommand is not null)
+            {
+                await nugetCommand.ExecuteAsync(resolvedProvider!, context).ConfigureAwait(false);
+                context.SuppressExecution = true; // restore — nuget command resets it
+
+                if (context.Variables.TryGet<List<string>>("__verso_nuget_assemblies", out var freshPaths)
+                    && freshPaths is { Count: > 0 })
+                {
+                    (factory, providerName, providerError) = ProviderDiscovery.Discover(
+                        resolvedCs!, resolvedProvider, freshPaths);
+                }
+            }
+        }
+
+        if (providerError is not null || factory is null)
         {
             await context.WriteOutputAsync(new CellOutput(
-                "text/plain", $"Error: {providerError}", IsError: true)).ConfigureAwait(false);
+                "text/plain", $"Error: {providerError ?? "Provider could not be resolved."}", IsError: true)).ConfigureAwait(false);
             return;
         }
 
@@ -111,7 +145,7 @@ public sealed class SqlConnectMagicCommand : IMagicCommand
         catch (Exception ex)
         {
             await context.WriteOutputAsync(new CellOutput(
-                "text/plain", $"Error opening connection: {ex.Message}", IsError: true))
+                "text/plain", $"Error opening connection: {FormatExceptionChain(ex)}", IsError: true))
                 .ConfigureAwait(false);
             return;
         }
@@ -142,5 +176,25 @@ public sealed class SqlConnectMagicCommand : IMagicCommand
             (!string.IsNullOrEmpty(dbName) ? $" — database: {dbName}" : "") +
             $"\n  Connection string: {redacted}"))
             .ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Walks the inner exception chain so the actual root cause is visible to the user.
+    /// Many ADO.NET providers wrap the real failure (missing native lib, bad config,
+    /// failed type initializer) several layers deep; printing only the outer message
+    /// hides the diagnostic that matters.
+    /// </summary>
+    private static string FormatExceptionChain(Exception ex)
+    {
+        var parts = new List<string> { $"{ex.GetType().Name}: {ex.Message}" };
+        var inner = ex.InnerException;
+        var depth = 0;
+        while (inner is not null && depth < 5)
+        {
+            parts.Add($"{inner.GetType().Name}: {inner.Message}");
+            inner = inner.InnerException;
+            depth++;
+        }
+        return string.Join(" → ", parts);
     }
 }

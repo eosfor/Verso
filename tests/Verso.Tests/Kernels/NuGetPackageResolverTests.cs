@@ -98,12 +98,13 @@ public sealed class NuGetPackageResolverTests
         var path = NuGetPackageResolver.CacheRoot;
         var segments = path.Split(Path.DirectorySeparatorChar);
 
-        // Expect: {tmp}/verso-nuget-packages/net{major}.0
+        // Expect: {tmp}/verso-nuget-packages/net{major}.0[-{schemaSuffix}]
         var cacheIndex = Array.IndexOf(segments, "verso-nuget-packages");
         Assert.IsTrue(cacheIndex >= 0, "CacheRoot should contain 'verso-nuget-packages' segment");
         Assert.IsTrue(cacheIndex + 1 < segments.Length, "TFM segment should follow 'verso-nuget-packages'");
+        var tfmSegment = segments[cacheIndex + 1];
         Assert.IsTrue(
-            segments[cacheIndex + 1].StartsWith("net") && segments[cacheIndex + 1].EndsWith(".0"),
-            $"Expected TFM segment like 'net8.0' after 'verso-nuget-packages', got '{segments[cacheIndex + 1]}'");
+            tfmSegment.StartsWith($"net{Environment.Version.Major}.0"),
+            $"Expected TFM segment to start with 'net{Environment.Version.Major}.0' after 'verso-nuget-packages', got '{tfmSegment}'");
     }
 }

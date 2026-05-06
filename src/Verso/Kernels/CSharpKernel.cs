@@ -152,10 +152,16 @@ public sealed class CSharpKernel : ILanguageKernel
             {
                 _stateManager!.AddReferences(newAssemblyPaths);
                 _workspaceManager!.AddReferences(newAssemblyPaths);
+            }
 
-                // Re-publish assembly paths to the variable store so other
-                // extensions (e.g. #!sql-connect provider discovery) that read
-                // it later in the cell can load them at runtime.
+            // Always re-publish the cumulative assembly path list so other extensions
+            // (e.g. #!sql-connect provider discovery) can load NuGet-resolved assemblies
+            // even after intermediate non-#r C# cells. The store key is consumed and
+            // removed at the top of every CSharpKernel.ExecuteAsync; without this
+            // unconditional re-publish, a plain `Console.WriteLine(...)` cell between
+            // `#r "nuget:..."` and `#!sql-connect` would leave the store empty.
+            if (_addedAssemblyPaths.Count > 0)
+            {
                 context.Variables.Set(
                     NuGetMagicCommand.AssemblyStoreKey,
                     _addedAssemblyPaths.ToList());
@@ -540,9 +546,40 @@ public sealed class CSharpKernel : ILanguageKernel
 
     private static string FormatInstalledPackagesHtml(List<NuGetResolveResult> packages)
     {
-        var items = string.Join("",
+        // Collect every (id, version) actually resolved across all top-level packages,
+        // dedupe by id (keeping the first resolved version), then surface the top-level
+        // packages with the rest grouped as transitive dependencies. This makes it
+        // possible to diagnose runtime FileNotFound errors by confirming what was
+        // actually downloaded (and at which version).
+        var topLevelIds = new HashSet<string>(
+            packages.Select(p => p.PackageId), StringComparer.OrdinalIgnoreCase);
+
+        var transitive = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var pkg in packages)
+        {
+            foreach (var (id, version) in pkg.ResolvedPackages)
+            {
+                if (topLevelIds.Contains(id)) continue;
+                transitive.TryAdd(id, version);
+            }
+        }
+
+        var topItems = string.Join("",
             packages.Select(p => $"<li><span>{p.PackageId}, {p.ResolvedVersion}</span></li>"));
-        return $"<div><b>Installed Packages</b><ul>{items}</ul></div>";
+
+        var html = $"<div><b>Installed Packages</b><ul>{topItems}</ul>";
+
+        if (transitive.Count > 0)
+        {
+            var depItems = string.Join("",
+                transitive.OrderBy(kvp => kvp.Key, StringComparer.OrdinalIgnoreCase)
+                    .Select(kvp => $"<li><span>{kvp.Key}, {kvp.Value}</span></li>"));
+            html += $"<details><summary>Transitive dependencies ({transitive.Count})</summary>" +
+                    $"<ul>{depItems}</ul></details>";
+        }
+
+        html += "</div>";
+        return html;
     }
 
     private static async Task<CellOutput?> TryFormatAsync(object value, IExecutionContext context)
