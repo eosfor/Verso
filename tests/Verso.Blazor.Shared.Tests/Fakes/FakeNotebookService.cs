@@ -153,6 +153,38 @@ public sealed class FakeNotebookService : INotebookService
 
     public Task ClearAllOutputsAsync() => Task.CompletedTask;
 
+    public Task SetCellInputCollapsedAsync(Guid cellId, bool collapsed)
+    {
+        var cell = Cells.FirstOrDefault(c => c.Id == cellId);
+        if (cell is not null)
+        {
+            if (collapsed)
+                cell.Metadata[CellViewStateMetadata.InputCollapsedKey] = true;
+            else
+                cell.Metadata.Remove(CellViewStateMetadata.InputCollapsedKey);
+
+            OnNotebookChanged?.Invoke();
+        }
+
+        return Task.CompletedTask;
+    }
+
+    public Task SetCellOutputVisibilityAsync(Guid cellId, string visibility)
+    {
+        var cell = Cells.FirstOrDefault(c => c.Id == cellId);
+        if (cell is not null)
+        {
+            if (string.Equals(visibility, CellViewStateMetadata.OutputExpanded, StringComparison.OrdinalIgnoreCase))
+                cell.Metadata.Remove(CellViewStateMetadata.OutputVisibilityKey);
+            else
+                cell.Metadata[CellViewStateMetadata.OutputVisibilityKey] = visibility;
+
+            OnNotebookChanged?.Invoke();
+        }
+
+        return Task.CompletedTask;
+    }
+
     // ── Execution ──────────────────────────────────────────────────────
 
     public Task<ExecutionResultDto> ExecuteCellAsync(Guid cellId)
