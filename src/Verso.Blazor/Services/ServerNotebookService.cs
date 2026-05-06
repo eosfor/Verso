@@ -21,6 +21,7 @@ public sealed class ServerNotebookService : INotebookService, IAsyncDisposable
     private Scaffold? _scaffold;
     private ExtensionHost? _extensionHost;
     private string? _filePath;
+    private CancellationTokenSource? _executionCts;
     private readonly IJSRuntime _jsRuntime;
     private readonly NotebookServiceOptions _options;
     // Monaco is eagerly loaded at page load (before any notebook opens),
@@ -88,10 +89,20 @@ public sealed class ServerNotebookService : INotebookService, IAsyncDisposable
             return _scaffold.RegisteredLanguages.Select(langId =>
             {
                 var kernel = _scaffold.GetKernel(langId);
-                return new KernelLanguageInfo(langId, kernel?.DisplayName ?? langId);
+                return new KernelLanguageInfo(
+                    langId,
+                    kernel?.DisplayName ?? langId,
+                    LanguageSupportsCancellation(langId));
             }).ToList();
         }
     }
+
+    // Languages that complete synchronously in microseconds (string substitution
+    // kernels) cannot be meaningfully cancelled; the UI suppresses the Stop button
+    // for these. Mirrors NotebookHandler.LanguageSupportsCancellation in the host.
+    private static bool LanguageSupportsCancellation(string languageId) =>
+        !string.Equals(languageId, "html", StringComparison.OrdinalIgnoreCase)
+        && !string.Equals(languageId, "mermaid", StringComparison.OrdinalIgnoreCase);
 
     public DateTimeOffset? Created => _scaffold?.Notebook.Created;
     public DateTimeOffset? Modified => _scaffold?.Notebook.Modified;
@@ -421,8 +432,18 @@ public sealed class ServerNotebookService : INotebookService, IAsyncDisposable
             throw new InvalidOperationException("No notebook is loaded.");
 
         // Per-cell events are forwarded from Scaffold via SubscribeToEngineEvents.
-        var result = await _scaffold.ExecuteCellAsync(cellId);
-        return new ExecutionResultDto(result.CellId, result.Status.ToString(), result.ExecutionCount, result.Elapsed);
+        var ct = ResetExecutionToken();
+        try
+        {
+            var result = await _scaffold.ExecuteCellAsync(cellId, ct);
+            return new ExecutionResultDto(result.CellId, result.Status.ToString(), result.ExecutionCount, result.Elapsed);
+        }
+        catch (OperationCanceledException)
+        {
+            // Surface cancellation as a normal Cancelled result so the UI doesn't
+            // render a generic execution-error banner.
+            return new ExecutionResultDto(cellId, "Cancelled", 0, TimeSpan.Zero);
+        }
     }
 
     public async Task<IReadOnlyList<ExecutionResultDto>> ExecuteAllAsync()
@@ -430,15 +451,36 @@ public sealed class ServerNotebookService : INotebookService, IAsyncDisposable
         if (_scaffold is null)
             throw new InvalidOperationException("No notebook is loaded.");
 
-        var results = await _scaffold.ExecuteAllAsync();
-        return results.Select(r =>
-            new ExecutionResultDto(r.CellId, r.Status.ToString(), r.ExecutionCount, r.Elapsed)).ToList();
+        var ct = ResetExecutionToken();
+        try
+        {
+            var results = await _scaffold.ExecuteAllAsync(ct);
+            return results.Select(r =>
+                new ExecutionResultDto(r.CellId, r.Status.ToString(), r.ExecutionCount, r.Elapsed)).ToList();
+        }
+        catch (OperationCanceledException)
+        {
+            return Array.Empty<ExecutionResultDto>();
+        }
+    }
+
+    public Task CancelCellAsync(Guid cellId)
+    {
+        _executionCts?.Cancel();
+        return Task.CompletedTask;
     }
 
     public async Task RestartKernelAsync()
     {
         if (_scaffold is null) return;
         await _scaffold.RestartKernelAsync();
+    }
+
+    private CancellationToken ResetExecutionToken()
+    {
+        _executionCts?.Dispose();
+        _executionCts = new CancellationTokenSource();
+        return _executionCts.Token;
     }
 
     // ── Toolbar actions ────────────────────────────────────────────────
@@ -1037,6 +1079,8 @@ public sealed class ServerNotebookService : INotebookService, IAsyncDisposable
             await _scaffold.DisposeAsync();
             _scaffold = null;
         }
+        _executionCts?.Dispose();
+        _executionCts = null;
         _extensionHost = null;
         _filePath = null;
     }

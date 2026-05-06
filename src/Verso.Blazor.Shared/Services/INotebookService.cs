@@ -166,6 +166,10 @@ public interface INotebookService
     /// <summary>Execute all cells in order.</summary>
     Task<IReadOnlyList<ExecutionResultDto>> ExecuteAllAsync();
 
+    /// <summary>Cancel the in-flight execution, if any. The cell ID is currently
+    /// informational; cancellation targets whichever cell is currently running.</summary>
+    Task CancelCellAsync(Guid cellId);
+
     /// <summary>Restart the active kernel.</summary>
     Task RestartKernelAsync();
 

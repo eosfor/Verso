@@ -410,6 +410,14 @@ public sealed class RemoteNotebookService : INotebookService, IAsyncDisposable
         return dtos;
     }
 
+    public async Task CancelCellAsync(Guid cellId)
+    {
+        // Fire-and-forget conceptually — the host routes execution/cancel out-of-band
+        // so the response returns promptly, but the in-flight execution/run RPC is
+        // what unblocks once the kernel observes the cancellation token.
+        await _bridge.RequestVoidAsync("execution/cancel", new { cellId = cellId.ToString() });
+    }
+
     public async Task RestartKernelAsync()
     {
         await _bridge.RequestVoidAsync("kernel/restart", null);
@@ -927,7 +935,7 @@ public sealed class RemoteNotebookService : INotebookService, IAsyncDisposable
 
         // Languages
         var langsResult = await _bridge.RequestAsync<LanguagesResponse>("notebook/getLanguages", null);
-        _registeredLanguages = langsResult.Languages?.Select(l => new KernelLanguageInfo(l.Id, l.DisplayName)).ToList() ?? new();
+        _registeredLanguages = langsResult.Languages?.Select(l => new KernelLanguageInfo(l.Id, l.DisplayName, l.SupportsCancellation)).ToList() ?? new();
 
         // Layouts
         var layoutsResult = await _bridge.RequestAsync<LayoutsResponse>("layout/getLayouts", null);
@@ -1302,6 +1310,7 @@ public sealed class RemoteNotebookService : INotebookService, IAsyncDisposable
     {
         public string Id { get; set; } = "";
         public string DisplayName { get; set; } = "";
+        public bool SupportsCancellation { get; set; } = true;
     }
 
     private sealed class LayoutsResponse

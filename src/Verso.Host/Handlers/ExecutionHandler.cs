@@ -21,7 +21,17 @@ public static class ExecutionHandler
             State = "running"
         });
 
-        var result = await ns.Scaffold.ExecuteCellAsync(cellId, ct);
+        Execution.ExecutionResult result;
+        try
+        {
+            result = await ns.Scaffold.ExecuteCellAsync(cellId, ct);
+        }
+        catch (OperationCanceledException)
+        {
+            // Treat as a normal cancelled completion so the JSON-RPC response is a
+            // success carrying Status="cancelled" rather than a generic InternalError.
+            result = Execution.ExecutionResult.Cancelled(cellId, 0, TimeSpan.Zero);
+        }
 
         // Notify: execution completed
         var finalState = result.Status switch
@@ -91,6 +101,12 @@ public static class ExecutionHandler
         try
         {
             results = await ns.Scaffold.ExecuteAllAsync(ct);
+        }
+        catch (OperationCanceledException)
+        {
+            // Cancelled mid-batch (between cells). Return whatever completed
+            // as a normal response so the client doesn't see a JSON-RPC error.
+            results = Array.Empty<Execution.ExecutionResult>();
         }
         finally
         {

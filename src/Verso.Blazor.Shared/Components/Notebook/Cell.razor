@@ -9,11 +9,22 @@
         <div class="verso-cell-gutter-actions">
             @if (IsEditable)
             {
-                <button class="verso-cell-btn verso-cell-btn--run verso-cell-gutter-btn"
-                        @onclick="() => OnRunCell.InvokeAsync(CellData.Id)"
-                        title="Run" disabled="@IsExecuting">
-                    @if (IsExecuting) { <span class="verso-spinner"></span> } else { <span>&#x25B6;</span> }
-                </button>
+                @if (IsExecuting && CanStopExecution)
+                {
+                    <button class="verso-cell-btn verso-cell-btn--stop verso-cell-gutter-btn"
+                            @onclick="() => OnCancelCell.InvokeAsync(CellData.Id)"
+                            title="Stop">
+                        <span>&#x25A0;</span>
+                    </button>
+                }
+                else
+                {
+                    <button class="verso-cell-btn verso-cell-btn--run verso-cell-gutter-btn"
+                            @onclick="() => OnRunCell.InvokeAsync(CellData.Id)"
+                            title="Run" disabled="@IsExecuting">
+                        @if (IsExecuting) { <span class="verso-spinner"></span> } else { <span>&#x25B6;</span> }
+                    </button>
+                }
             }
             @if (IsHeadingCell)
             {
@@ -245,6 +256,7 @@
     [Parameter] public int Index { get; set; }
     [Parameter] public bool IsLast { get; set; }
     [Parameter] public EventCallback<Guid> OnRunCell { get; set; }
+    [Parameter] public EventCallback<Guid> OnCancelCell { get; set; }
     [Parameter] public EventCallback<Guid> OnDeleteCell { get; set; }
     [Parameter] public EventCallback<Guid> OnSelect { get; set; }
     [Parameter] public EventCallback<Guid> OnMoveUp { get; set; }
@@ -279,6 +291,11 @@
     private string EditorLanguage => CellData.Type == "markdown" ? "markdown" : (CellData.Language ?? "csharp");
 
     private bool HasErrorOutput => CellData.Outputs.Any(o => o.IsError);
+
+    private bool CanStopExecution => CellData.Language is not null
+        && (Service.RegisteredLanguages
+            .FirstOrDefault(l => string.Equals(l.Id, CellData.Language, StringComparison.OrdinalIgnoreCase))
+            ?.SupportsCancellation ?? false);
 
     private string EffectiveStatus => HasErrorOutput
         ? "failed"

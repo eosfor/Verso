@@ -266,6 +266,13 @@ internal sealed class ExecutionPipeline
             }
         }
 
+        // Some kernels honor cancellation by returning early without throwing
+        // (e.g. PowerShell's BeginStop interrupts a sleep cleanly). Treat that
+        // as a cancelled completion so the cell shows the cancelled status badge
+        // rather than a misleading success checkmark.
+        if (ct.IsCancellationRequested)
+            return ExecutionResult.Cancelled(cell.Id, executionCount, stopwatch.Elapsed);
+
         return ExecutionResult.Success(cell.Id, executionCount, stopwatch.Elapsed);
     }
 
@@ -292,6 +299,10 @@ internal sealed class ExecutionPipeline
         cell.Outputs.Add(new CellOutput(result.MimeType, result.Content));
 
         stopwatch.Stop();
+
+        if (ct.IsCancellationRequested)
+            return ExecutionResult.Cancelled(cell.Id, executionCount, stopwatch.Elapsed);
+
         return ExecutionResult.Success(cell.Id, executionCount, stopwatch.Elapsed);
     }
 }

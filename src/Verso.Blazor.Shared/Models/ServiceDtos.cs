@@ -6,7 +6,7 @@ namespace Verso.Blazor.Shared.Models;
 public sealed record CellTypeInfo(string Id, string DisplayName);
 
 /// <summary>Describes a kernel language available for code cells.</summary>
-public sealed record KernelLanguageInfo(string Id, string DisplayName);
+public sealed record KernelLanguageInfo(string Id, string DisplayName, bool SupportsCancellation = true);
 
 /// <summary>Describes a toolbar action with its metadata.</summary>
 public sealed record ToolbarActionInfo(

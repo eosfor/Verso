@@ -238,12 +238,20 @@ public static class NotebookHandler
             languages.Add(new LanguageDto
             {
                 Id = langId,
-                DisplayName = kernel?.DisplayName ?? langId
+                DisplayName = kernel?.DisplayName ?? langId,
+                SupportsCancellation = LanguageSupportsCancellation(langId)
             });
         }
 
         return new LanguagesResult { Languages = languages };
     }
+
+    // Languages that complete synchronously in microseconds (string substitution
+    // kernels) cannot be meaningfully cancelled; the UI suppresses the Stop button
+    // for these.
+    private static bool LanguageSupportsCancellation(string languageId) =>
+        !string.Equals(languageId, "html", StringComparison.OrdinalIgnoreCase)
+        && !string.Equals(languageId, "mermaid", StringComparison.OrdinalIgnoreCase);
 
     public static CellTypesResult HandleGetCellTypes(NotebookSession ns)
     {

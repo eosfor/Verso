@@ -49,6 +49,16 @@ _ = Task.Run(async () =>
                     continue;
                 }
 
+                if (method == MethodNames.ExecutionCancel)
+                {
+                    // Handle inline so cancel does not queue behind the running execution
+                    // it is trying to interrupt. The dispatch just signals the session CTS,
+                    // which the kernel observes through IExecutionContext.CancellationToken.
+                    var response = await session.DispatchAsync(id, method, @params);
+                    SendLine(response, stdoutLock);
+                    continue;
+                }
+
                 await requests.Writer.WriteAsync((id, method, @params));
             }
             catch (JsonException)

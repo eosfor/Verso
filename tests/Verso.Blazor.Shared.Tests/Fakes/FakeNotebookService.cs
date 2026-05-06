@@ -167,6 +167,14 @@ public sealed class FakeNotebookService : INotebookService
         return Task.FromResult<IReadOnlyList<ExecutionResultDto>>(new List<ExecutionResultDto>());
     }
 
+    public List<Guid> CancelledCellIds { get; } = new();
+
+    public Task CancelCellAsync(Guid cellId)
+    {
+        CancelledCellIds.Add(cellId);
+        return Task.CompletedTask;
+    }
+
     public Task RestartKernelAsync()
     {
         RestartKernelCallCount++;

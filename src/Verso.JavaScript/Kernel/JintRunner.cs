@@ -17,7 +17,7 @@ namespace Verso.JavaScript.Kernel;
 /// - No require() or import (no module system)
 /// - No async/await at top level (synchronous execution)
 /// - No npm packages
-/// - Memory (128 MB) and timeout (30s) limits enforced
+/// - Memory (128 MB) and timeout (15s) limits enforced
 /// </remarks>
 internal sealed class JintRunner : IJavaScriptRunner
 {
@@ -40,7 +40,7 @@ internal sealed class JintRunner : IJavaScriptRunner
         _engine = new Engine(opts =>
         {
             opts.LimitMemory(128 * 1024 * 1024);
-            opts.TimeoutInterval(TimeSpan.FromSeconds(30));
+            opts.TimeoutInterval(TimeSpan.FromSeconds(15));
             opts.Strict(false);
         });
 
@@ -108,7 +108,7 @@ internal sealed class JintRunner : IJavaScriptRunner
             catch (TimeoutException)
             {
                 hasError = true;
-                errorMessage = "Execution timed out (30 second limit).";
+                errorMessage = "Execution timed out (15 second limit).";
             }
             catch (MemoryLimitExceededException)
             {

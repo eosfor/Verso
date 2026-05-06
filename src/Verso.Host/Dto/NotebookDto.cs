@@ -58,6 +58,7 @@ public sealed class LanguageDto
 {
     public string Id { get; set; } = "";
     public string DisplayName { get; set; } = "";
+    public bool SupportsCancellation { get; set; } = true;
 }
 
 public sealed class ToolbarActionsResult
