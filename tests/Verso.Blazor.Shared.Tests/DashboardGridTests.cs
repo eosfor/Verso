@@ -9,6 +9,7 @@ public sealed class DashboardGridTests : BunitTestContext
     public void Setup()
     {
         _service = new FakeNotebookService { IsLoaded = true };
+        TestContext!.Services.AddSingleton<INotebookService>(_service);
 
         // Set up JS interop stubs for DashboardCell + MonacoEditor
         TestContext!.JSInterop.SetupVoid("versoDashboard.initResizable", _ => true);
