@@ -65,7 +65,7 @@
                         @((MarkupString)output.Content)
                     </div>
                 }
-                else if (output.MimeType.StartsWith("image/"))
+                else if (output.MimeType.StartsWith("image/", StringComparison.OrdinalIgnoreCase))
                 {
                     <div class="verso-output verso-output--html">
                         <img src="@($"data:{output.MimeType};base64,{output.Content}")" style="max-width:100%" />
