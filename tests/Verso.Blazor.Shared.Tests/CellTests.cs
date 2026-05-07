@@ -103,9 +103,20 @@ public sealed class CellTests : BunitTestContext
 
         var cut = RenderCell(cell, isExecuting: true);
 
-        var runBtn = cut.FindAll("button[title='Run']");
-        Assert.IsTrue(runBtn.Count > 0);
-        Assert.IsTrue(runBtn[0].HasAttribute("disabled"));
+        // For kernels that support cancellation (csharp does), the Run button
+        // is replaced by a Stop button while executing. Otherwise it remains
+        // visible but disabled.
+        var stopBtn = cut.FindAll("button[title='Stop']");
+        if (stopBtn.Count > 0)
+        {
+            Assert.IsFalse(stopBtn[0].HasAttribute("disabled"));
+        }
+        else
+        {
+            var runBtn = cut.FindAll("button[title='Run']");
+            Assert.IsTrue(runBtn.Count > 0);
+            Assert.IsTrue(runBtn[0].HasAttribute("disabled"));
+        }
     }
 
     [TestMethod]
