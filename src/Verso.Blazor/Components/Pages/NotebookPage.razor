@@ -553,18 +553,7 @@
         if (_activePanel == "properties" && !Service.ActiveLayoutSupportsPropertiesPanel)
             _activePanel = null;
 
-        if (Service.ActiveLayoutId == "presentation")
-        {
-            await InvokeAsync(async () =>
-            {
-                await HandleRunAll();
-                StateHasChanged();
-            });
-        }
-        else
-        {
-            await InvokeAsync(StateHasChanged);
-        }
+        await InvokeAsync(StateHasChanged);
     }
 
     private async void HandleThemeChanged()
