@@ -478,26 +478,15 @@ export class BlazorEditorProvider
 
   /**
    * Returns a cache-buster string for webview resource URLs.
-   * Published builds use the extension version. Local dev builds append the
-   * newest published WASM artifact mtime so every recompile forces a fresh fetch.
+   * Published builds use the extension version. Local dev builds append
+   * the WASM root's mtime so every recompile forces a fresh fetch.
    */
   private getCacheBuster(): string {
     const version: string = this.context.extension.packageJSON.version ?? "0";
     try {
-      const wasmRoot = path.join(this.context.extensionPath, "blazor-wasm", "wwwroot");
-      const candidates = [
-        wasmRoot,
-        path.join(wasmRoot, "_framework"),
-        path.join(this.context.extensionPath, "blazor-wasm", "Verso.Blazor.Wasm.staticwebassets.endpoints.json"),
-      ];
-      const newestMtime = candidates.reduce((newest, candidate) => {
-        try {
-          return Math.max(newest, fs.statSync(candidate).mtimeMs);
-        } catch {
-          return newest;
-        }
-      }, 0);
-      return newestMtime > 0 ? `${version}-${newestMtime.toFixed(0)}` : version;
+      const wasmDir = path.join(this.context.extensionPath, "blazor-wasm", "wwwroot");
+      const stat = fs.statSync(wasmDir);
+      return `${version}-${stat.mtimeMs.toFixed(0)}`;
     } catch {
       return version;
     }
