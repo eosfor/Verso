@@ -47,6 +47,15 @@ export function deactivate(): void {
 function resolveHostPath(context: vscode.ExtensionContext): string {
   const fs = require("fs");
 
+  const bundled = path.join(context.extensionPath, "host", "Verso.Host.dll");
+
+  // In F5/development mode the extension should always use the freshly built
+  // bundled host from the workspace, even if a user-level verso.hostPath points
+  // at an older installed host.
+  if (context.extensionMode === vscode.ExtensionMode.Development && fs.existsSync(bundled)) {
+    return bundled;
+  }
+
   // Check user configuration first
   const configured = vscode.workspace
     .getConfiguration("verso")
@@ -56,7 +65,6 @@ function resolveHostPath(context: vscode.ExtensionContext): string {
   }
 
   // Check bundled host (inside the installed extension)
-  const bundled = path.join(context.extensionPath, "host", "Verso.Host.dll");
   if (fs.existsSync(bundled)) {
     return bundled;
   }
