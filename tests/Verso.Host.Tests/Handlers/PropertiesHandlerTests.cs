@@ -135,6 +135,92 @@ public class PropertiesHandlerTests
     }
 
     [TestMethod]
+    public async Task HandleUpdateProperty_DisplayProvider_UpdatesCellViewStateMetadata()
+    {
+        var (session, notebookId) = await CreateOpenSession();
+        var ns = session.GetSession(notebookId);
+
+        var addParams = JsonSerializer.SerializeToElement(
+            new CellAddParams { Type = "code", Source = "test" },
+            JsonRpcMessage.SerializerOptions);
+        var cell = CellHandler.HandleAdd(ns, addParams);
+
+        var collapseParams = JsonSerializer.SerializeToElement(
+            new PropertiesUpdatePropertyParams
+            {
+                CellId = cell.Id,
+                ProviderExtensionId = CellViewStateMetadata.ProviderExtensionId,
+                PropertyName = CellViewStateMetadata.InputCollapsedProperty,
+                Value = "true"
+            },
+            JsonRpcMessage.SerializerOptions);
+
+        var outputParams = JsonSerializer.SerializeToElement(
+            new PropertiesUpdatePropertyParams
+            {
+                CellId = cell.Id,
+                ProviderExtensionId = CellViewStateMetadata.ProviderExtensionId,
+                PropertyName = CellViewStateMetadata.OutputVisibilityProperty,
+                Value = CellViewStateMetadata.OutputPreview
+            },
+            JsonRpcMessage.SerializerOptions);
+
+        await PropertiesHandler.HandleUpdatePropertyAsync(ns, collapseParams);
+        await PropertiesHandler.HandleUpdatePropertyAsync(ns, outputParams);
+
+        var fetched = ns.Scaffold.GetCell(Guid.Parse(cell.Id))!;
+        Assert.AreEqual(true, fetched.Metadata[CellViewStateMetadata.InputCollapsedKey]);
+        Assert.AreEqual(CellViewStateMetadata.OutputPreview, fetched.Metadata[CellViewStateMetadata.OutputVisibilityKey]);
+    }
+
+    [TestMethod]
+    public async Task NotebookSaveOpen_RoundTripsCellDisplayMetadata()
+    {
+        var (session, notebookId) = await CreateOpenSession();
+        var ns = session.GetSession(notebookId);
+
+        var addParams = JsonSerializer.SerializeToElement(
+            new CellAddParams { Type = "code", Language = "csharp", Source = "Console.WriteLine(1);" },
+            JsonRpcMessage.SerializerOptions);
+        var cell = CellHandler.HandleAdd(ns, addParams);
+
+        foreach (var (propertyName, value) in new (string PropertyName, string Value)[]
+        {
+            (CellViewStateMetadata.InputCollapsedProperty, "true"),
+            (CellViewStateMetadata.OutputVisibilityProperty, CellViewStateMetadata.OutputPreview),
+            (CellViewStateMetadata.InputPreviewLineCountProperty, "3"),
+            (CellViewStateMetadata.OutputPreviewLineCountProperty, "7"),
+        })
+        {
+            var updateParams = JsonSerializer.SerializeToElement(
+                new PropertiesUpdatePropertyParams
+                {
+                    CellId = cell.Id,
+                    ProviderExtensionId = CellViewStateMetadata.ProviderExtensionId,
+                    PropertyName = propertyName,
+                    Value = value
+                },
+                JsonRpcMessage.SerializerOptions);
+
+            await PropertiesHandler.HandleUpdatePropertyAsync(ns, updateParams);
+        }
+
+        var saved = await NotebookHandler.HandleSaveAsync(ns);
+
+        var reopenParams = JsonSerializer.SerializeToElement(
+            new NotebookOpenParams { Content = saved.Content, FilePath = "roundtrip.verso" },
+            JsonRpcMessage.SerializerOptions);
+        var reopened = await NotebookHandler.HandleOpenAsync(session, reopenParams);
+        var reopenedNs = session.GetSession(reopened.NotebookId);
+        var reopenedCell = reopenedNs.Scaffold.Cells.Single();
+
+        Assert.AreEqual(true, reopenedCell.Metadata[CellViewStateMetadata.InputCollapsedKey]);
+        Assert.AreEqual(CellViewStateMetadata.OutputPreview, reopenedCell.Metadata[CellViewStateMetadata.OutputVisibilityKey]);
+        Assert.AreEqual(3, Convert.ToInt32(reopenedCell.Metadata[CellViewStateMetadata.InputPreviewLineCountKey]));
+        Assert.AreEqual(7, Convert.ToInt32(reopenedCell.Metadata[CellViewStateMetadata.OutputPreviewLineCountKey]));
+    }
+
+    [TestMethod]
     public async Task HandleUpdateProperty_UnknownProvider_Throws()
     {
         var (session, notebookId) = await CreateOpenSession();

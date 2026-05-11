@@ -158,12 +158,6 @@ public interface INotebookService
     /// <summary>Clear all cell outputs.</summary>
     Task ClearAllOutputsAsync();
 
-    /// <summary>Persist whether the code input for a cell is collapsed in the UI.</summary>
-    Task SetCellInputCollapsedAsync(Guid cellId, bool collapsed);
-
-    /// <summary>Persist the output visibility mode for a cell.</summary>
-    Task SetCellOutputVisibilityAsync(Guid cellId, string visibility);
-
     // ── Execution ──────────────────────────────────────────────────────
 
     /// <summary>Execute a single cell.</summary>

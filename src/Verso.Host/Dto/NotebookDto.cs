@@ -1,5 +1,3 @@
-using System.Text.Json;
-
 namespace Verso.Host.Dto;
 
 // --- Notebook ---
@@ -128,13 +126,6 @@ public sealed class CellUpdateSourceParams
 {
     public string CellId { get; set; } = "";
     public string Source { get; set; } = "";
-}
-
-public sealed class CellUpdateMetadataParams
-{
-    public string CellId { get; set; } = "";
-    public Dictionary<string, JsonElement>? Set { get; set; }
-    public List<string>? Remove { get; set; }
 }
 
 public sealed class CellChangeTypeParams

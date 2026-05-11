@@ -720,24 +720,6 @@ html, body {
     flex: 0 0 auto;
 }
 
-.verso-cell-btn--mode {
-    width: auto;
-    min-width: 0;
-    height: 22px;
-    padding: 0 8px;
-    font-size: 10px;
-    line-height: 1;
-    white-space: nowrap;
-    border-radius: 999px;
-    background: var(--verso-cell-output-background, #F5F5F5);
-    color: var(--verso-editor-line-number, #858585);
-}
-
-.verso-cell-btn--mode:hover:not(:disabled) {
-    background: var(--verso-toolbar-button-hover, #E0E0E0);
-    color: var(--verso-editor-foreground, #1E1E1E);
-}
-
 .verso-cell-btn:hover:not(:disabled) {
     background: var(--verso-toolbar-button-hover, #E0E0E0);
     color: var(--verso-editor-foreground, #1E1E1E);
@@ -852,7 +834,7 @@ html, body {
 .verso-cell-rendered-input--preview .verso-output-error-stack {
     display: -webkit-box;
     -webkit-box-orient: vertical;
-    -webkit-line-clamp: 5;
+    -webkit-line-clamp: var(--verso-output-preview-lines, 5);
     overflow: hidden;
 }
 

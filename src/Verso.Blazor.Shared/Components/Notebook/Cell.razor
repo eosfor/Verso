@@ -93,22 +93,6 @@
                 </div>
             }
             <div class="verso-cell-toolbar-actions">
-                @if (SupportsInputCollapse)
-                {
-                    <button class="verso-cell-btn verso-cell-btn--action verso-cell-btn--mode"
-                            @onclick="ToggleInputCollapseAsync"
-                            title="@(IsInputCollapsed ? "Expand code input" : "Collapse code input")">
-                        @(IsInputCollapsed ? "Code: 2L" : "Code: full")
-                    </button>
-                }
-                @if (HasOutputs)
-                {
-                    <button class="verso-cell-btn verso-cell-btn--action verso-cell-btn--mode"
-                            @onclick="CycleOutputVisibilityAsync"
-                            title="Cycle output visibility">
-                        @OutputVisibilityLabel
-                    </button>
-                }
                 @foreach (var action in _enabledCellActions)
                 {
                     var act = action;
@@ -149,6 +133,7 @@
             else if (CellData.Outputs.Count > 0)
             {
                 <div class="verso-cell-rendered-input @(IsOutputPreview ? "verso-cell-rendered-input--preview" : "")"
+                     style="@OutputPreviewStyle"
                      data-cell-id="@CellData.Id"
                      @onclick="() => OnSelect.InvokeAsync(CellData.Id)">
                     @foreach (var output in CellData.Outputs)
@@ -225,6 +210,7 @@
             else
             {
                 <div class="verso-cell-outputs @(IsInPreviewMode ? "verso-cell-outputs--clickable" : "") @(IsOutputPreview ? "verso-cell-outputs--preview" : "")"
+                     style="@OutputPreviewStyle"
                      data-cell-id="@CellData.Id"
                      @onclick="HandleOutputClick">
                     @foreach (var output in CellData.Outputs)
@@ -320,8 +306,6 @@
 
     private bool SupportsInputCollapse => IsEditable && string.Equals(CellData.Type, "code", StringComparison.OrdinalIgnoreCase);
 
-    private bool HasOutputs => CellData.Outputs.Count > 0;
-
     private bool IsInputCollapsed => ReadMetadataBool(CellViewStateMetadata.InputCollapsedKey);
 
     private string OutputVisibilityMode => NormalizeOutputVisibility(ReadMetadataString(CellViewStateMetadata.OutputVisibilityKey));
@@ -330,16 +314,21 @@
 
     private bool IsOutputHidden => string.Equals(OutputVisibilityMode, CellViewStateMetadata.OutputHidden, StringComparison.Ordinal);
 
-    private string OutputVisibilityLabel => OutputVisibilityMode switch
-    {
-        CellViewStateMetadata.OutputPreview => "Output: 5L",
-        CellViewStateMetadata.OutputHidden => "Output: off",
-        _ => "Output: full"
-    };
+    private int InputPreviewLineCount => ReadMetadataInt(
+        CellViewStateMetadata.InputPreviewLineCountKey,
+        CellViewStateMetadata.DefaultInputPreviewLineCount);
+
+    private int OutputPreviewLineCount => ReadMetadataInt(
+        CellViewStateMetadata.OutputPreviewLineCountKey,
+        CellViewStateMetadata.DefaultOutputPreviewLineCount);
+
+    private string OutputPreviewStyle => IsOutputPreview
+        ? $"--verso-output-preview-lines: {OutputPreviewLineCount};"
+        : "";
 
     private string OutputSummaryText => $"{CellData.Outputs.Count} output(s) hidden";
 
-    private string CollapsedSourcePreview => BuildCollapsedSourcePreview(CellData.Source);
+    private string CollapsedSourcePreview => BuildCollapsedSourcePreview(CellData.Source, InputPreviewLineCount);
 
     private bool IsInPreviewMode => CollapsesInput && CellData.Outputs.Count > 0 && !IsSelected
         && !string.IsNullOrWhiteSpace(CellData.Source);
@@ -451,19 +440,11 @@
 
     private async Task ToggleInputCollapseAsync()
     {
-        await Service.SetCellInputCollapsedAsync(CellData.Id, !IsInputCollapsed);
-    }
-
-    private async Task CycleOutputVisibilityAsync()
-    {
-        var next = OutputVisibilityMode switch
-        {
-            CellViewStateMetadata.OutputExpanded => CellViewStateMetadata.OutputPreview,
-            CellViewStateMetadata.OutputPreview => CellViewStateMetadata.OutputHidden,
-            _ => CellViewStateMetadata.OutputExpanded
-        };
-
-        await Service.SetCellOutputVisibilityAsync(CellData.Id, next);
+        await Service.NotifyPropertyChangedAsync(
+            CellData.Id,
+            CellViewStateMetadata.ProviderExtensionId,
+            CellViewStateMetadata.InputCollapsedProperty,
+            !IsInputCollapsed);
     }
 
     private async Task<object?> HandleGetHoverInfo(string code, int position)
@@ -568,6 +549,24 @@
         };
     }
 
+    private int ReadMetadataInt(string key, int defaultValue)
+    {
+        if (!CellData.Metadata.TryGetValue(key, out var value) || value is null)
+            return defaultValue;
+
+        var parsed = value switch
+        {
+            int i => i,
+            long l when l <= int.MaxValue && l >= int.MinValue => (int)l,
+            double d when d <= int.MaxValue && d >= int.MinValue => (int)d,
+            JsonElement { ValueKind: JsonValueKind.Number } element when element.TryGetInt32(out var i) => i,
+            string s when int.TryParse(s, out var i) => i,
+            _ => defaultValue
+        };
+
+        return parsed > 0 ? parsed : defaultValue;
+    }
+
     private static string NormalizeOutputVisibility(string? visibility)
     {
         if (string.Equals(visibility, CellViewStateMetadata.OutputPreview, StringComparison.OrdinalIgnoreCase))
@@ -577,7 +576,7 @@
         return CellViewStateMetadata.OutputExpanded;
     }
 
-    private static string BuildCollapsedSourcePreview(string source)
+    private static string BuildCollapsedSourcePreview(string source, int lineCount)
     {
         var lines = source
             .Replace("\r\n", "\n", StringComparison.Ordinal)
@@ -589,7 +588,7 @@
         if (lines.Count == 0)
             return "(empty)";
 
-        var previewLines = lines.Take(2).ToList();
+        var previewLines = lines.Take(Math.Max(1, lineCount)).ToList();
         if (lines.Count > previewLines.Count)
             previewLines.Add("...");
 
