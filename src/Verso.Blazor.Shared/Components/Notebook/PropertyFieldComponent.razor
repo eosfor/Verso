@@ -24,7 +24,7 @@
         case PropertyFieldType.Toggle:
             <input type="checkbox"
                    class="verso-properties-toggle"
-                   checked="@(Field.CurrentValue is true)"
+                   checked="@IsToggleChecked()"
                    disabled="@Field.IsReadOnly"
                    @onchange="e => OnValueChanged.InvokeAsync(e.Value)" />
             break;
@@ -153,6 +153,15 @@
         }
         StateHasChanged();
     }
+
+    private bool IsToggleChecked() => Field.CurrentValue switch
+    {
+        bool b => b,
+        JsonElement { ValueKind: JsonValueKind.True } => true,
+        JsonElement { ValueKind: JsonValueKind.False } => false,
+        string s when bool.TryParse(s, out var parsed) => parsed,
+        _ => false
+    };
 
     private bool IsSelected(string optionValue) =>
         string.Equals(Field.CurrentValue?.ToString(), optionValue, StringComparison.OrdinalIgnoreCase);

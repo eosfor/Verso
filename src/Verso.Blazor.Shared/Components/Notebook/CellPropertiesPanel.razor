@@ -51,9 +51,13 @@
         if (_subscribedService != Service)
         {
             if (_subscribedService is not null)
+            {
                 _subscribedService.OnCellExecuted -= HandleCellChanged;
+                _subscribedService.OnNotebookChanged -= HandleNotebookChanged;
+            }
             _subscribedService = Service;
             Service.OnCellExecuted += HandleCellChanged;
+            Service.OnNotebookChanged += HandleNotebookChanged;
         }
 
         if (SelectedCellId != _lastLoadedCellId)
@@ -107,9 +111,21 @@
         });
     }
 
+    private async void HandleNotebookChanged()
+    {
+        await InvokeAsync(async () =>
+        {
+            await LoadSectionsAsync(showLoading: false);
+            StateHasChanged();
+        });
+    }
+
     public void Dispose()
     {
         if (_subscribedService is not null)
+        {
             _subscribedService.OnCellExecuted -= HandleCellChanged;
+            _subscribedService.OnNotebookChanged -= HandleNotebookChanged;
+        }
     }
 }

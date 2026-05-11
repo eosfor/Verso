@@ -21,53 +21,67 @@ public sealed class CellDisplayPropertyProvider : ICellPropertyProvider
 
     public Task<PropertySection> GetPropertiesSectionAsync(CellModel cell, ICellRenderContext context)
     {
-        var fields = new List<PropertyField>
+        var fields = new List<PropertyField>();
+
+        if (SupportsInputCollapse(cell))
         {
-            new(
+            fields.Add(new(
                 CellViewStateMetadata.InputCollapsedProperty,
                 "Collapse input",
                 PropertyFieldType.Toggle,
-                ReadBool(cell, CellViewStateMetadata.InputCollapsedKey)),
-            new(
-                CellViewStateMetadata.OutputVisibilityProperty,
-                "Output",
-                PropertyFieldType.Select,
-                ReadOutputVisibility(cell),
-                Options: new[]
-                {
-                    new PropertyFieldOption(CellViewStateMetadata.OutputExpanded, "Full"),
-                    new PropertyFieldOption(CellViewStateMetadata.OutputPreview, "Preview"),
-                    new PropertyFieldOption(CellViewStateMetadata.OutputHidden, "Hidden"),
-                }),
-            new(
+                ReadBool(cell, CellViewStateMetadata.InputCollapsedKey)));
+        }
+
+        fields.Add(new(
+            CellViewStateMetadata.OutputVisibilityProperty,
+            "Output",
+            PropertyFieldType.Select,
+            ReadOutputVisibility(cell),
+            Options: new[]
+            {
+                new PropertyFieldOption(CellViewStateMetadata.OutputExpanded, "Full"),
+                new PropertyFieldOption(CellViewStateMetadata.OutputPreview, "Preview"),
+                new PropertyFieldOption(CellViewStateMetadata.OutputHidden, "Hidden"),
+            }));
+
+        if (SupportsInputCollapse(cell))
+        {
+            fields.Add(new(
                 CellViewStateMetadata.InputPreviewLineCountProperty,
                 "Input preview lines",
                 PropertyFieldType.Number,
                 ReadPositiveInt(
                     cell,
                     CellViewStateMetadata.InputPreviewLineCountKey,
-                    CellViewStateMetadata.DefaultInputPreviewLineCount)),
-            new(
-                CellViewStateMetadata.OutputPreviewLineCountProperty,
-                "Output preview lines",
-                PropertyFieldType.Number,
-                ReadPositiveInt(
-                    cell,
-                    CellViewStateMetadata.OutputPreviewLineCountKey,
-                    CellViewStateMetadata.DefaultOutputPreviewLineCount)),
-            new(
-                CellViewStateMetadata.PreviewStyleProperty,
-                "Preview style",
-                PropertyFieldType.Select,
-                ReadPreviewStyle(cell),
-                Options: new[]
-                {
-                    new PropertyFieldOption(CellViewStateMetadata.PreviewStyleLines, "Lines"),
-                }),
-        };
+                    CellViewStateMetadata.DefaultInputPreviewLineCount)));
+        }
+
+        fields.Add(new(
+            CellViewStateMetadata.OutputPreviewLineCountProperty,
+            "Output preview lines",
+            PropertyFieldType.Number,
+            ReadPositiveInt(
+                cell,
+                CellViewStateMetadata.OutputPreviewLineCountKey,
+                CellViewStateMetadata.DefaultOutputPreviewLineCount)));
+
+        fields.Add(new(
+            CellViewStateMetadata.PreviewStyleProperty,
+            "Preview style",
+            PropertyFieldType.Select,
+            ReadPreviewStyle(cell),
+            Options: new[]
+            {
+                new PropertyFieldOption(CellViewStateMetadata.PreviewStyleLines, "Lines"),
+            }));
 
         return Task.FromResult(new PropertySection("Display", null, fields));
     }
+
+    // Matches Cell.razor's SupportsInputCollapse: only code cells render the gutter chevron
+    // and the collapsed-source preview, so only code cells should expose the related fields.
+    private static bool SupportsInputCollapse(CellModel cell) =>
+        string.Equals(cell.Type, "code", StringComparison.OrdinalIgnoreCase);
 
     public Task OnPropertyChangedAsync(CellModel cell, string propertyName, object? value, ICellRenderContext context)
     {
@@ -116,14 +130,9 @@ public sealed class CellDisplayPropertyProvider : ICellPropertyProvider
 
     private static void SetPreviewStyle(CellModel cell, string? value)
     {
-        var normalized = string.Equals(value, CellViewStateMetadata.PreviewStyleLines, StringComparison.OrdinalIgnoreCase)
-            ? CellViewStateMetadata.PreviewStyleLines
-            : CellViewStateMetadata.PreviewStyleLines;
-
-        if (string.Equals(normalized, CellViewStateMetadata.PreviewStyleLines, StringComparison.Ordinal))
-            cell.Metadata.Remove(CellViewStateMetadata.PreviewStyleKey);
-        else
-            cell.Metadata[CellViewStateMetadata.PreviewStyleKey] = normalized;
+        // TODO: replace with a real normalize-and-persist when a second preview style is added.
+        _ = value;
+        cell.Metadata.Remove(CellViewStateMetadata.PreviewStyleKey);
     }
 
     private static void SetBoolMetadata(CellModel cell, string key, bool value)
@@ -148,10 +157,9 @@ public sealed class CellDisplayPropertyProvider : ICellPropertyProvider
 
     private static string ReadPreviewStyle(CellModel cell)
     {
-        var value = ReadString(cell, CellViewStateMetadata.PreviewStyleKey);
-        return string.Equals(value, CellViewStateMetadata.PreviewStyleLines, StringComparison.OrdinalIgnoreCase)
-            ? CellViewStateMetadata.PreviewStyleLines
-            : CellViewStateMetadata.PreviewStyleLines;
+        // TODO: normalize against the supported set when a second preview style is added.
+        _ = cell;
+        return CellViewStateMetadata.PreviewStyleLines;
     }
 
     private static string NormalizeOutputVisibility(string? value)

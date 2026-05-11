@@ -42,6 +42,22 @@ public sealed class CellDisplayPropertyProviderTests
     }
 
     [TestMethod]
+    public async Task GetPropertiesSection_OmitsInputFields_ForNonCodeCells()
+    {
+        var section = await _provider.GetPropertiesSectionAsync(new CellModel { Type = "markdown" }, _renderContext);
+
+        Assert.AreEqual("Display", section.Title);
+        CollectionAssert.AreEqual(
+            new[]
+            {
+                CellViewStateMetadata.OutputVisibilityProperty,
+                CellViewStateMetadata.OutputPreviewLineCountProperty,
+                CellViewStateMetadata.PreviewStyleProperty,
+            },
+            section.Fields.Select(f => f.Name).ToArray());
+    }
+
+    [TestMethod]
     public async Task GetPropertiesSection_UsesDefaults_WhenMetadataIsAbsent()
     {
         var section = await _provider.GetPropertiesSectionAsync(new CellModel { Type = "code" }, _renderContext);

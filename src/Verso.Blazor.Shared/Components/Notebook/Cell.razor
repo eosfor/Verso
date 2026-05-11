@@ -98,7 +98,7 @@
                     var act = action;
                     <button class="verso-cell-btn verso-cell-btn--action"
                             @onclick="() => ExecuteCellActionAsync(act)"
-                            title="Export @act.DisplayName">
+                            title="@act.DisplayName">
                         @if (act.Icon is not null)
                         {
                             @((MarkupString)act.Icon)
