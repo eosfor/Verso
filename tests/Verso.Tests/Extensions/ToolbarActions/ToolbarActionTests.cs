@@ -165,6 +165,72 @@ public sealed class ToolbarActionTests
         Assert.AreEqual(30, action.Order);
     }
 
+    // --- ClearCellOutputAction ---
+
+    [TestMethod]
+    public async Task ClearCellOutput_IsEnabled_WhenSelectedCellHasOutputs()
+    {
+        var action = new ClearCellOutputAction();
+        var cellId = Guid.NewGuid();
+        var context = CreateContext(
+            selectedCellIds: new[] { cellId },
+            cells: new[]
+            {
+                new CellModel
+                {
+                    Id = cellId,
+                    Outputs = new List<CellOutput> { CellOutput.Plain("hello") }
+                }
+            });
+
+        Assert.IsTrue(await action.IsEnabledAsync(context));
+    }
+
+    [TestMethod]
+    public async Task ClearCellOutput_IsDisabled_WhenSelectedCellHasNoOutputs()
+    {
+        var action = new ClearCellOutputAction();
+        var cellId = Guid.NewGuid();
+        var context = CreateContext(
+            selectedCellIds: new[] { cellId },
+            cells: new[]
+            {
+                new CellModel { Id = cellId }
+            });
+
+        Assert.IsFalse(await action.IsEnabledAsync(context));
+    }
+
+    [TestMethod]
+    public async Task ClearCellOutput_Execute_CallsClearOutputForSelectedCells()
+    {
+        var action = new ClearCellOutputAction();
+        var id1 = Guid.NewGuid();
+        var id2 = Guid.NewGuid();
+        var stub = new StubNotebookOperations();
+        var context = CreateContext(
+            selectedCellIds: new[] { id1, id2 },
+            cells: new[]
+            {
+                new CellModel { Id = id1, Outputs = new List<CellOutput> { CellOutput.Plain("a") } },
+                new CellModel { Id = id2, Outputs = new List<CellOutput> { CellOutput.Plain("b") } }
+            },
+            notebook: stub);
+
+        await action.ExecuteAsync(context);
+
+        CollectionAssert.AreEqual(new List<Guid> { id1, id2 }, stub.ClearedOutputCellIds);
+    }
+
+    [TestMethod]
+    public void ClearCellOutput_Metadata_IsCorrect()
+    {
+        var action = new ClearCellOutputAction();
+        Assert.AreEqual("verso.action.clear-cell-output", action.ActionId);
+        Assert.AreEqual(ToolbarPlacement.CellToolbar, action.Placement);
+        Assert.AreEqual(31, action.Order);
+    }
+
     // --- RestartKernelAction ---
 
     [TestMethod]
