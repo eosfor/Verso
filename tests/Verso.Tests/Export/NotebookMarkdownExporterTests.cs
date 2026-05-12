@@ -144,7 +144,7 @@ public sealed class NotebookMarkdownExporterTests
     public void Export_PresentationLayout_HiddenCellSkipped()
     {
         var cell = new CellModel { Type = "code", Language = "csharp", Source = "secret-setup" };
-        cell.Metadata["verso:visibility"] = new Dictionary<string, object>
+        cell.Metadata["verso:ui.layoutVisibility"] = new Dictionary<string, object>
         {
             ["presentation"] = "Hidden"
         };
@@ -163,7 +163,7 @@ public sealed class NotebookMarkdownExporterTests
             Type = "code", Language = "sql", Source = "SELECT 1",
             Outputs = { new CellOutput("text/plain", "query-result-42") }
         };
-        cell.Metadata["verso:visibility"] = new Dictionary<string, object>
+        cell.Metadata["verso:ui.layoutVisibility"] = new Dictionary<string, object>
         {
             ["presentation"] = "OutputOnly"
         };
@@ -179,7 +179,7 @@ public sealed class NotebookMarkdownExporterTests
     public void Export_NotebookLayout_AllCellsVisible()
     {
         var cell = new CellModel { Type = "code", Language = "csharp", Source = "visible-cell" };
-        cell.Metadata["verso:visibility"] = new Dictionary<string, object>
+        cell.Metadata["verso:ui.layoutVisibility"] = new Dictionary<string, object>
         {
             ["notebook"] = "Hidden"
         };
@@ -213,7 +213,7 @@ public sealed class NotebookMarkdownExporterTests
     public void Export_PresentationLayout_ExplicitVisibleOverride_InfrastructureCellPresent()
     {
         var cell = new CellModel { Type = "parameters", Source = "param-visible" };
-        cell.Metadata["verso:visibility"] = new Dictionary<string, object>
+        cell.Metadata["verso:ui.layoutVisibility"] = new Dictionary<string, object>
         {
             ["presentation"] = "Visible"
         };

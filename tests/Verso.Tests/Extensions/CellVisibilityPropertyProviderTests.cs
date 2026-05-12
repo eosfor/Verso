@@ -92,7 +92,7 @@ public sealed class CellVisibilityPropertyProviderTests
     public async Task GetPropertiesSection_ReadsCurrentValueFromMetadata()
     {
         var cell = new CellModel { Type = "fake" };
-        cell.Metadata["verso:visibility"] = new Dictionary<string, string>
+        cell.Metadata["verso:ui.layoutVisibility"] = new Dictionary<string, string>
         {
             ["presentation"] = "hidden",
         };
@@ -132,8 +132,8 @@ public sealed class CellVisibilityPropertyProviderTests
 
         await _provider.OnPropertyChangedAsync(cell, "visibility:presentation", "hidden", _renderContext);
 
-        Assert.IsTrue(cell.Metadata.ContainsKey("verso:visibility"));
-        var dict = (Dictionary<string, string>)cell.Metadata["verso:visibility"];
+        Assert.IsTrue(cell.Metadata.ContainsKey("verso:ui.layoutVisibility"));
+        var dict = (Dictionary<string, string>)cell.Metadata["verso:ui.layoutVisibility"];
         Assert.AreEqual("hidden", dict["presentation"]);
     }
 
@@ -142,7 +142,7 @@ public sealed class CellVisibilityPropertyProviderTests
     {
         var cell = new CellModel { Type = "fake" };
         // First set an override
-        cell.Metadata["verso:visibility"] = new Dictionary<string, string>
+        cell.Metadata["verso:ui.layoutVisibility"] = new Dictionary<string, string>
         {
             ["presentation"] = "hidden",
         };
@@ -151,28 +151,28 @@ public sealed class CellVisibilityPropertyProviderTests
         await _provider.OnPropertyChangedAsync(cell, "visibility:presentation", "visible", _renderContext);
 
         // Override should be removed, and if dict is empty, the key should be removed too
-        Assert.IsFalse(cell.Metadata.ContainsKey("verso:visibility"));
+        Assert.IsFalse(cell.Metadata.ContainsKey("verso:ui.layoutVisibility"));
     }
 
     [TestMethod]
     public async Task OnPropertyChanged_NullValue_RemovesOverride()
     {
         var cell = new CellModel { Type = "fake" };
-        cell.Metadata["verso:visibility"] = new Dictionary<string, string>
+        cell.Metadata["verso:ui.layoutVisibility"] = new Dictionary<string, string>
         {
             ["presentation"] = "hidden",
         };
 
         await _provider.OnPropertyChangedAsync(cell, "visibility:presentation", null, _renderContext);
 
-        Assert.IsFalse(cell.Metadata.ContainsKey("verso:visibility"));
+        Assert.IsFalse(cell.Metadata.ContainsKey("verso:ui.layoutVisibility"));
     }
 
     [TestMethod]
     public async Task OnPropertyChanged_PreservesOtherLayoutOverrides()
     {
         var cell = new CellModel { Type = "fake" };
-        cell.Metadata["verso:visibility"] = new Dictionary<string, string>
+        cell.Metadata["verso:ui.layoutVisibility"] = new Dictionary<string, string>
         {
             ["presentation"] = "hidden",
             ["dashboard"] = "hidden",
@@ -181,8 +181,8 @@ public sealed class CellVisibilityPropertyProviderTests
         // Remove only the presentation override
         await _provider.OnPropertyChangedAsync(cell, "visibility:presentation", "visible", _renderContext);
 
-        Assert.IsTrue(cell.Metadata.ContainsKey("verso:visibility"));
-        var dict = (Dictionary<string, string>)cell.Metadata["verso:visibility"];
+        Assert.IsTrue(cell.Metadata.ContainsKey("verso:ui.layoutVisibility"));
+        var dict = (Dictionary<string, string>)cell.Metadata["verso:ui.layoutVisibility"];
         Assert.IsFalse(dict.ContainsKey("presentation"));
         Assert.AreEqual("hidden", dict["dashboard"]);
     }

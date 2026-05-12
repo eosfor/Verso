@@ -359,7 +359,7 @@ foreach (var cell in cells)
 }
 ```
 
-The resolver checks `CellModel.Metadata["verso:visibility"]` for a per-layout user override first, then falls back to `ICellRenderer.DefaultVisibility`, constraining the result to your `SupportedVisibilityStates`.
+The resolver checks `CellModel.Metadata["verso:ui.layoutVisibility"]` for a per-layout user override first, then falls back to `ICellRenderer.DefaultVisibility`, constraining the result to your `SupportedVisibilityStates`.
 
 ## Front-End Considerations
 

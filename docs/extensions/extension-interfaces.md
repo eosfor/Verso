@@ -417,7 +417,7 @@ Contributes configurable property sections to the cell properties panel. When a 
 
 Providers are stateless. `AppliesTo` is called first as a filter. For providers that return `true`, `GetPropertiesSectionAsync` produces the section definition. `OnPropertyChangedAsync` fires when a field value changes in the UI.
 
-Property values are stored in `CellModel.Metadata` under extension-namespaced keys (e.g., `"verso:visibility"`, `"myext:color"`). Each provider owns its own namespace.
+Property values are stored in `CellModel.Metadata` under extension-namespaced keys (e.g., `"verso:ui.layoutVisibility"`, `"myext:color"`). Each provider owns its own namespace.
 
 ### Panel Composition
 
@@ -465,7 +465,7 @@ public sealed record PropertyFieldOption(
 
 ### Built-in Provider: CellVisibilityPropertyProvider
 
-Verso ships a built-in `CellVisibilityPropertyProvider` (`ExtensionId: "verso.propertyprovider.visibility"`) that renders a `Select` field for each layout that supports more than just `Visible` in its `SupportedVisibilityStates`. Values are stored under the `"verso:visibility"` metadata key.
+Verso ships a built-in `CellVisibilityPropertyProvider` (`ExtensionId: "verso.propertyprovider.visibility"`) that renders a `Select` field for each layout that supports more than just `Visible` in its `SupportedVisibilityStates`. Values are stored under the `"verso:ui.layoutVisibility"` metadata key. The legacy `"verso:visibility"` key is migrated automatically at notebook open time and will be removed in 1.0.22.
 
 ### Example Implementation
 

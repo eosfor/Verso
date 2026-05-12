@@ -716,7 +716,7 @@ public sealed class RemoteNotebookService : INotebookService, IAsyncDisposable
         // Renderer hint resolution (Layer 2) would require a bridge method.
         var cell = _cells.FirstOrDefault(c => c.Id == cellId);
         if (cell is null || _activeLayoutId is null) return CellVisibilityState.Visible;
-        if (!cell.Metadata.TryGetValue("verso:visibility", out var obj))
+        if (!cell.Metadata.TryGetValue(CellLayoutVisibilityMetadata.MetadataKey, out var obj))
             return CellVisibilityState.Visible;
 
         string? valueStr = null;

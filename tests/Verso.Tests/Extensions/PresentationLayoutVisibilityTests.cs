@@ -33,7 +33,7 @@ public sealed class PresentationLayoutVisibilityTests
             Type = "code",
             Source = "Console.WriteLine(\"hello\")",
             Outputs = { new CellOutput("text/plain", "hello") },
-            Metadata = { ["verso:visibility"] = new Dictionary<string, string> { ["presentation"] = "hidden" } }
+            Metadata = { ["verso:ui.layoutVisibility"] = new Dictionary<string, string> { ["presentation"] = "hidden" } }
         };
 
         var result = await _layout.RenderLayoutAsync(new List<CellModel> { cell }, context);
@@ -53,7 +53,7 @@ public sealed class PresentationLayoutVisibilityTests
             Type = "parameters",
             Source = "param1 = 42",
             Outputs = { new CellOutput("text/plain", "param1: 42") },
-            Metadata = { ["verso:visibility"] = new Dictionary<string, string> { ["presentation"] = "visible" } }
+            Metadata = { ["verso:ui.layoutVisibility"] = new Dictionary<string, string> { ["presentation"] = "visible" } }
         };
 
         var result = await _layout.RenderLayoutAsync(new List<CellModel> { cell }, context);
@@ -116,7 +116,7 @@ public sealed class PresentationLayoutVisibilityTests
             Id = Guid.NewGuid(),
             Type = "code",
             Source = "var x = 42;",
-            Metadata = { ["verso:visibility"] = new Dictionary<string, string> { ["presentation"] = "visible" } }
+            Metadata = { ["verso:ui.layoutVisibility"] = new Dictionary<string, string> { ["presentation"] = "visible" } }
         };
 
         var result = await _layout.RenderLayoutAsync(new List<CellModel> { cell }, context);

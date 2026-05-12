@@ -75,7 +75,7 @@ public sealed class DashboardLayoutVisibilityTests
             Id = cellId,
             Type = "code",
             Source = "should appear",
-            Metadata = { ["verso:visibility"] = new Dictionary<string, string> { ["dashboard"] = "hidden" } }
+            Metadata = { ["verso:ui.layoutVisibility"] = new Dictionary<string, string> { ["dashboard"] = "hidden" } }
         };
 
         var result = await layout.RenderLayoutAsync(new List<CellModel> { cell }, context);
@@ -133,7 +133,7 @@ public sealed class DashboardLayoutVisibilityTests
             Id = Guid.NewGuid(),
             Type = "parameters",
             Source = "param1 = 42",
-            Metadata = { ["verso:visibility"] = new Dictionary<string, string> { ["dashboard"] = "visible" } }
+            Metadata = { ["verso:ui.layoutVisibility"] = new Dictionary<string, string> { ["dashboard"] = "visible" } }
         };
 
         var result = await layout.RenderLayoutAsync(new List<CellModel> { cell }, context);

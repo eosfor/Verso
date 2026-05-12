@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Verso.Abstractions;
 using Verso.Extensions;
+using Verso.Extensions.Utilities;
 using Verso.Host.Dto;
 using Verso.Host.Protocol;
 using Verso.MagicCommands;
@@ -66,6 +67,8 @@ public static class NotebookHandler
                 .OrderBy(pp => pp.Priority);
             foreach (var pp in postProcessors)
                 notebook = await pp.PostDeserializeAsync(notebook, p.FilePath);
+
+            LegacyMetadataMigrator.Migrate(notebook);
         }
 
         // Ensure essential metadata defaults are present so subsystems, the

@@ -10,7 +10,7 @@ namespace Verso.Extensions.Utilities;
 /// </summary>
 public static class CellVisibilityResolver
 {
-    private const string MetadataKey = "verso:visibility";
+    private const string MetadataKey = CellLayoutVisibilityMetadata.MetadataKey;
 
     /// <summary>
     /// Resolves the visibility state for a cell within a specific layout.

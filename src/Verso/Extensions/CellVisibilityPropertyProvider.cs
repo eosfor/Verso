@@ -11,7 +11,7 @@ namespace Verso.Extensions;
 [VersoExtension]
 public sealed class CellVisibilityPropertyProvider : ICellPropertyProvider
 {
-    private const string MetadataKey = "verso:visibility";
+    private const string MetadataKey = CellLayoutVisibilityMetadata.MetadataKey;
     private const string FieldPrefix = "visibility:";
 
     private IExtensionHostContext? _context;

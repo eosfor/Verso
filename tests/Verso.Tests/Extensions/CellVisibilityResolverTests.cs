@@ -149,7 +149,7 @@ public class CellVisibilityResolverTests
         var jsonElement = JsonDocument.Parse(json).RootElement.Clone();
 
         var cell = new CellModel();
-        cell.Metadata["verso:visibility"] = jsonElement;
+        cell.Metadata["verso:ui.layoutVisibility"] = jsonElement;
         var renderer = new StubRenderer(CellVisibilityHint.Content);
 
         var result = CellVisibilityResolver.Resolve(cell, renderer, "presentation", PresentationStates);
@@ -161,7 +161,7 @@ public class CellVisibilityResolverTests
     public void Resolve_DictionaryStringObjectMetadata_ReadsOverride()
     {
         var cell = new CellModel();
-        cell.Metadata["verso:visibility"] = new Dictionary<string, object>
+        cell.Metadata["verso:ui.layoutVisibility"] = new Dictionary<string, object>
         {
             ["presentation"] = "visible",
         };
@@ -177,7 +177,7 @@ public class CellVisibilityResolverTests
     private static CellModel CellWithVisibilityOverride(string layoutId, string state)
     {
         var cell = new CellModel();
-        cell.Metadata["verso:visibility"] = new Dictionary<string, string>
+        cell.Metadata["verso:ui.layoutVisibility"] = new Dictionary<string, string>
         {
             [layoutId] = state,
         };
