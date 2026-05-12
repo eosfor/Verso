@@ -197,7 +197,7 @@
                     <div class="verso-panel-content" @ref="_panelContentEl" style="width:@(_panelWidth)px">
                         <div class="verso-panel-resize-handle" @ref="_resizeHandle"></div>
                         <div class="verso-panel-header">
-                            <span class="verso-panel-title">@PanelDisplayName(_activePanel)</span>
+                            <span class="verso-panel-title">@PanelDisplayNames.For(_activePanel)</span>
                             <button class="verso-panel-minimize" @onclick="CollapsePanel" title="Collapse panel">&#x203A;</button>
                         </div>
                         <div class="verso-panel-body">
@@ -667,16 +667,6 @@
             .Where(c => Service.ResolveCellVisibility(c.Id) != CellVisibilityState.Hidden)
             .ToList();
     }
-
-    private static string PanelDisplayName(string panelId) => panelId switch
-    {
-        "metadata" => "METADATA",
-        "extensions" => "EXTENSIONS",
-        "variables" => "VARIABLES",
-        "settings" => "SETTINGS",
-        "properties" => "PROPERTIES",
-        _ => panelId.ToUpperInvariant()
-    };
 
     [JSInvokable]
     public void OnPanelResized(int width)
