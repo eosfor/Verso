@@ -270,6 +270,144 @@ public sealed class NotebookHtmlExporterTests
         Assert.IsTrue(html.Contains("param-visible"));
     }
 
+    // ── View-state honoring tests ────────────────────────────────────────
+
+    [TestMethod]
+    public void Export_OutputHidden_OutputsOmitted()
+    {
+        var cell = new CellModel
+        {
+            Type = "code", Language = "csharp", Source = "Console.WriteLine(42);",
+            Outputs = { new CellOutput("text/plain", "secret-output-value") }
+        };
+        cell.Metadata[CellViewStateMetadata.OutputVisibilityKey] = CellViewStateMetadata.OutputHidden;
+
+        var html = ExportToString(null, new[] { cell }, null, null);
+
+        Assert.IsTrue(html.Contains("Console.WriteLine(42);"));
+        Assert.IsFalse(html.Contains("secret-output-value"));
+    }
+
+    [TestMethod]
+    public void Export_OutputPreview_TextOutputTruncatedWithFooter()
+    {
+        var content = string.Join("\n", Enumerable.Range(1, 10).Select(i => $"line-{i}"));
+        var cell = new CellModel
+        {
+            Type = "code", Source = "x",
+            Outputs = { new CellOutput("text/plain", content) }
+        };
+        cell.Metadata[CellViewStateMetadata.OutputVisibilityKey] = CellViewStateMetadata.OutputPreview;
+
+        var html = ExportToString(null, new[] { cell }, null, null);
+
+        Assert.IsTrue(html.Contains("line-1"));
+        Assert.IsTrue(html.Contains("line-5"));
+        Assert.IsFalse(html.Contains("line-6"));
+        Assert.IsTrue(html.Contains("... (5 more lines)"));
+    }
+
+    [TestMethod]
+    public void Export_OutputPreview_HtmlOutputUntruncated()
+    {
+        var content = string.Join("\n", Enumerable.Range(1, 10).Select(i => $"<p>row-{i}</p>"));
+        var cell = new CellModel
+        {
+            Type = "code", Source = "x",
+            Outputs = { new CellOutput("text/html", content) }
+        };
+        cell.Metadata[CellViewStateMetadata.OutputVisibilityKey] = CellViewStateMetadata.OutputPreview;
+
+        var html = ExportToString(null, new[] { cell }, null, null);
+
+        Assert.IsTrue(html.Contains("<p>row-10</p>"));
+        Assert.IsFalse(html.Contains("more lines"));
+    }
+
+    [TestMethod]
+    public void Export_InputCollapsed_SourceOmittedOutputPresent()
+    {
+        var cell = new CellModel
+        {
+            Type = "code", Language = "csharp", Source = "secret-source-code",
+            Outputs = { new CellOutput("text/plain", "the-output") }
+        };
+        cell.Metadata[CellViewStateMetadata.InputCollapsedKey] = true;
+
+        var html = ExportToString(null, new[] { cell }, null, null);
+
+        Assert.IsFalse(html.Contains("secret-source-code"));
+        Assert.IsTrue(html.Contains("the-output"));
+    }
+
+    [TestMethod]
+    public void Export_InputCollapsed_NoOutputs_CellSkipped()
+    {
+        var cell = new CellModel { Type = "code", Source = "only-source" };
+        cell.Metadata[CellViewStateMetadata.InputCollapsedKey] = true;
+
+        var html = ExportToString(null, new[] { cell }, null, null);
+
+        Assert.IsFalse(html.Contains("only-source"));
+    }
+
+    [TestMethod]
+    public void Export_RespectCellViewStateFalse_AllContentPresent()
+    {
+        var cell = new CellModel
+        {
+            Type = "code", Source = "full-source",
+            Outputs = { new CellOutput("text/plain", "full-output") }
+        };
+        cell.Metadata[CellViewStateMetadata.InputCollapsedKey] = true;
+        cell.Metadata[CellViewStateMetadata.OutputVisibilityKey] = CellViewStateMetadata.OutputHidden;
+
+        var html = ExportToString(null, new[] { cell }, null, new ExportOptions(RespectCellViewState: false));
+
+        Assert.IsTrue(html.Contains("full-source"));
+        Assert.IsTrue(html.Contains("full-output"));
+    }
+
+    [TestMethod]
+    public void Export_OutputPreview_CustomLineCount()
+    {
+        var content = string.Join("\n", Enumerable.Range(1, 6).Select(i => $"line-{i}"));
+        var cell = new CellModel
+        {
+            Type = "code", Source = "x",
+            Outputs = { new CellOutput("text/plain", content) }
+        };
+        cell.Metadata[CellViewStateMetadata.OutputVisibilityKey] = CellViewStateMetadata.OutputPreview;
+        cell.Metadata[CellViewStateMetadata.OutputPreviewLineCountKey] = 2;
+
+        var html = ExportToString(null, new[] { cell }, null, null);
+
+        Assert.IsTrue(html.Contains("line-1"));
+        Assert.IsTrue(html.Contains("line-2"));
+        Assert.IsFalse(html.Contains("line-3"));
+        Assert.IsTrue(html.Contains("... (4 more lines)"));
+    }
+
+    [TestMethod]
+    public void Export_OutputHiddenPlusLayoutOutputOnly_CellSkipped()
+    {
+        var cell = new CellModel
+        {
+            Type = "code", Language = "sql", Source = "SELECT *",
+            Outputs = { new CellOutput("text/plain", "tabular-result") }
+        };
+        cell.Metadata["verso:ui.layoutVisibility"] = new Dictionary<string, object>
+        {
+            ["presentation"] = "OutputOnly"
+        };
+        cell.Metadata[CellViewStateMetadata.OutputVisibilityKey] = CellViewStateMetadata.OutputHidden;
+
+        var html = ExportToString(null, new[] { cell }, null, MakePresentationOptions());
+
+        Assert.IsFalse(html.Contains("SELECT *"));
+        Assert.IsFalse(html.Contains("tabular-result"));
+    }
+
     private static string ExportToString(string? title, IReadOnlyList<CellModel> cells, ITheme? theme)
     {
         var bytes = NotebookHtmlExporter.Export(title, cells, theme);

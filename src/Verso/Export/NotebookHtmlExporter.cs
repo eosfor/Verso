@@ -37,6 +37,7 @@ internal static class NotebookHtmlExporter
         var useVisibility = options?.LayoutId is not null
             && options.SupportedVisibilityStates is not null
             && options.Renderers is not null;
+        var respectViewState = options?.RespectCellViewState ?? true;
 
         // Render cells into a temporary buffer so we know which features are used
         var bodySb = new StringBuilder();
@@ -50,32 +51,54 @@ internal static class NotebookHtmlExporter
         // Cells
         foreach (var cell in cells)
         {
+            var layoutState = CellVisibilityState.Visible;
             if (useVisibility)
             {
                 var renderer = options!.Renderers!.FirstOrDefault(r =>
                     string.Equals(r.CellTypeId, cell.Type, StringComparison.OrdinalIgnoreCase)) ?? FallbackRenderer;
-                var visibility = CellVisibilityResolver.Resolve(cell, renderer, options.LayoutId!, options.SupportedVisibilityStates!);
+                layoutState = CellVisibilityResolver.Resolve(cell, renderer, options.LayoutId!, options.SupportedVisibilityStates!);
 
-                switch (visibility)
+                if (layoutState == CellVisibilityState.Hidden)
+                    continue;
+
+                if (layoutState == CellVisibilityState.Collapsed)
                 {
-                    case CellVisibilityState.Hidden:
-                        continue;
-                    case CellVisibilityState.OutputOnly:
-                        RenderOutputsOnly(bodySb, cell, ref hasMermaid);
-                        continue;
-                    case CellVisibilityState.Collapsed:
-                        RenderCollapsed(bodySb, cell);
-                        continue;
+                    RenderCollapsed(bodySb, cell);
+                    continue;
                 }
             }
 
-            if (string.Equals(cell.Type, "markdown", StringComparison.OrdinalIgnoreCase))
+            var outputVisibility = respectViewState
+                ? CellViewStateReader.ReadOutputVisibility(cell)
+                : CellViewStateMetadata.OutputExpanded;
+            var inputCollapsed = respectViewState && CellViewStateReader.ReadInputCollapsed(cell);
+            var outputPreviewLineCount = CellViewStateReader.ReadOutputPreviewLineCount(cell);
+
+            var hideSource = layoutState == CellVisibilityState.OutputOnly || inputCollapsed;
+            var hideOutputs = string.Equals(outputVisibility, CellViewStateMetadata.OutputHidden, StringComparison.Ordinal);
+            var previewOutputs = string.Equals(outputVisibility, CellViewStateMetadata.OutputPreview, StringComparison.Ordinal);
+
+            if (hideSource && (hideOutputs || cell.Outputs.Count == 0))
+                continue;
+
+            if (!hideSource)
             {
-                RenderMarkdownCell(bodySb, cell);
+                if (string.Equals(cell.Type, "markdown", StringComparison.OrdinalIgnoreCase))
+                {
+                    RenderMarkdownCell(bodySb, cell);
+                }
+                else
+                {
+                    RenderCodeCellSource(bodySb, cell);
+                }
             }
-            else
+
+            if (!hideOutputs)
             {
-                RenderCodeCell(bodySb, cell, ref hasMermaid);
+                foreach (var output in cell.Outputs)
+                {
+                    RenderOutput(bodySb, output, previewOutputs, outputPreviewLineCount, ref hasMermaid);
+                }
             }
         }
 
@@ -126,9 +149,8 @@ internal static class NotebookHtmlExporter
         sb.AppendLine("</div>");
     }
 
-    private static void RenderCodeCell(StringBuilder sb, CellModel cell, ref bool hasMermaid)
+    private static void RenderCodeCellSource(StringBuilder sb, CellModel cell)
     {
-        // Source code block
         sb.AppendLine("<div class=\"verso-export-code\">");
         if (!string.IsNullOrEmpty(cell.Language))
         {
@@ -138,20 +160,6 @@ internal static class NotebookHtmlExporter
         sb.Append(WebUtility.HtmlEncode(cell.Source));
         sb.AppendLine("</code></pre>");
         sb.AppendLine("</div>");
-
-        // Outputs
-        foreach (var output in cell.Outputs)
-        {
-            RenderOutput(sb, output, ref hasMermaid);
-        }
-    }
-
-    private static void RenderOutputsOnly(StringBuilder sb, CellModel cell, ref bool hasMermaid)
-    {
-        foreach (var output in cell.Outputs)
-        {
-            RenderOutput(sb, output, ref hasMermaid);
-        }
     }
 
     private static void RenderCollapsed(StringBuilder sb, CellModel cell)
@@ -171,7 +179,7 @@ internal static class NotebookHtmlExporter
         sb.AppendLine("</div>");
     }
 
-    private static void RenderOutput(StringBuilder sb, CellOutput output, ref bool hasMermaid)
+    private static void RenderOutput(StringBuilder sb, CellOutput output, bool previewText, int previewLineCount, ref bool hasMermaid)
     {
         if (output.IsError)
         {
@@ -200,7 +208,7 @@ internal static class NotebookHtmlExporter
             case "text/plain":
                 sb.AppendLine("<div class=\"verso-output--text\">");
                 sb.AppendLine("<pre>");
-                sb.Append(WebUtility.HtmlEncode(output.Content));
+                WriteTruncated(sb, output.Content, previewText, previewLineCount);
                 sb.AppendLine("</pre>");
                 sb.AppendLine("</div>");
                 break;
@@ -244,11 +252,29 @@ internal static class NotebookHtmlExporter
                 {
                     sb.AppendLine("<div class=\"verso-output--text\">");
                     sb.AppendLine("<pre>");
-                    sb.Append(WebUtility.HtmlEncode(output.Content));
+                    WriteTruncated(sb, output.Content, previewText, previewLineCount);
                     sb.AppendLine("</pre>");
                     sb.AppendLine("</div>");
                 }
                 break;
+        }
+    }
+
+    private static void WriteTruncated(StringBuilder sb, string content, bool previewText, int previewLineCount)
+    {
+        var lines = content.Split('\n');
+        if (previewText && previewLineCount > 0 && lines.Length > previewLineCount)
+        {
+            for (int i = 0; i < previewLineCount; i++)
+            {
+                sb.AppendLine(WebUtility.HtmlEncode(lines[i]));
+            }
+            var omitted = lines.Length - previewLineCount;
+            sb.Append("... (").Append(omitted).AppendLine(omitted == 1 ? " more line)" : " more lines)");
+        }
+        else
+        {
+            sb.Append(WebUtility.HtmlEncode(content));
         }
     }
 

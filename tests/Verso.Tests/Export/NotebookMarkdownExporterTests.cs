@@ -228,6 +228,144 @@ public sealed class NotebookMarkdownExporterTests
         Assert.IsTrue(md.Contains("param-visible"));
     }
 
+    // ── View-state honoring tests ────────────────────────────────────────
+
+    [TestMethod]
+    public void Export_OutputHidden_OutputsOmitted()
+    {
+        var cell = new CellModel
+        {
+            Type = "code", Language = "python", Source = "print(42)",
+            Outputs = { new CellOutput("text/plain", "secret-output-value") }
+        };
+        cell.Metadata[CellViewStateMetadata.OutputVisibilityKey] = CellViewStateMetadata.OutputHidden;
+
+        var md = ExportToString(null, new[] { cell }, null);
+
+        Assert.IsTrue(md.Contains("print(42)"));
+        Assert.IsFalse(md.Contains("secret-output-value"));
+    }
+
+    [TestMethod]
+    public void Export_OutputPreview_TextOutputTruncatedWithFooter()
+    {
+        var content = string.Join("\n", Enumerable.Range(1, 12).Select(i => $"line-{i}"));
+        var cell = new CellModel
+        {
+            Type = "code", Language = "python", Source = "x",
+            Outputs = { new CellOutput("text/plain", content) }
+        };
+        cell.Metadata[CellViewStateMetadata.OutputVisibilityKey] = CellViewStateMetadata.OutputPreview;
+
+        var md = ExportToString(null, new[] { cell }, null);
+
+        Assert.IsTrue(md.Contains("> line-1"));
+        Assert.IsTrue(md.Contains("> line-5"));
+        Assert.IsFalse(md.Contains("> line-6"));
+        Assert.IsTrue(md.Contains("> ... (7 more lines)"));
+    }
+
+    [TestMethod]
+    public void Export_OutputPreview_RichOutputUntruncated()
+    {
+        var content = string.Join("\n", Enumerable.Range(1, 12).Select(i => $"<p>row-{i}</p>"));
+        var cell = new CellModel
+        {
+            Type = "code", Source = "x",
+            Outputs = { new CellOutput("text/html", content) }
+        };
+        cell.Metadata[CellViewStateMetadata.OutputVisibilityKey] = CellViewStateMetadata.OutputPreview;
+
+        var md = ExportToString(null, new[] { cell }, null);
+
+        Assert.IsTrue(md.Contains("<p>row-12</p>"));
+        Assert.IsFalse(md.Contains("more lines"));
+    }
+
+    [TestMethod]
+    public void Export_OutputPreview_RespectsCustomLineCount()
+    {
+        var content = string.Join("\n", Enumerable.Range(1, 6).Select(i => $"line-{i}"));
+        var cell = new CellModel
+        {
+            Type = "code", Source = "x",
+            Outputs = { new CellOutput("text/plain", content) }
+        };
+        cell.Metadata[CellViewStateMetadata.OutputVisibilityKey] = CellViewStateMetadata.OutputPreview;
+        cell.Metadata[CellViewStateMetadata.OutputPreviewLineCountKey] = 2;
+
+        var md = ExportToString(null, new[] { cell }, null);
+
+        Assert.IsTrue(md.Contains("> line-1"));
+        Assert.IsTrue(md.Contains("> line-2"));
+        Assert.IsFalse(md.Contains("> line-3"));
+        Assert.IsTrue(md.Contains("> ... (4 more lines)"));
+    }
+
+    [TestMethod]
+    public void Export_InputCollapsed_SourceOmittedOutputPresent()
+    {
+        var cell = new CellModel
+        {
+            Type = "code", Language = "python", Source = "secret-source-code",
+            Outputs = { new CellOutput("text/plain", "the-output") }
+        };
+        cell.Metadata[CellViewStateMetadata.InputCollapsedKey] = true;
+
+        var md = ExportToString(null, new[] { cell }, null);
+
+        Assert.IsFalse(md.Contains("secret-source-code"));
+        Assert.IsTrue(md.Contains("the-output"));
+    }
+
+    [TestMethod]
+    public void Export_InputCollapsed_NoOutputs_CellSkipped()
+    {
+        var cell = new CellModel { Type = "code", Source = "only-source" };
+        cell.Metadata[CellViewStateMetadata.InputCollapsedKey] = true;
+
+        var md = ExportToString(null, new[] { cell }, null);
+
+        Assert.IsFalse(md.Contains("only-source"));
+    }
+
+    [TestMethod]
+    public void Export_RespectCellViewStateFalse_AllContentPresent()
+    {
+        var cell = new CellModel
+        {
+            Type = "code", Source = "full-source",
+            Outputs = { new CellOutput("text/plain", "full-output") }
+        };
+        cell.Metadata[CellViewStateMetadata.InputCollapsedKey] = true;
+        cell.Metadata[CellViewStateMetadata.OutputVisibilityKey] = CellViewStateMetadata.OutputHidden;
+
+        var md = ExportToString(null, new[] { cell }, new ExportOptions(RespectCellViewState: false));
+
+        Assert.IsTrue(md.Contains("full-source"));
+        Assert.IsTrue(md.Contains("full-output"));
+    }
+
+    [TestMethod]
+    public void Export_OutputHiddenPlusLayoutOutputOnly_CellSkipped()
+    {
+        var cell = new CellModel
+        {
+            Type = "code", Language = "sql", Source = "SELECT *",
+            Outputs = { new CellOutput("text/plain", "tabular-result") }
+        };
+        cell.Metadata["verso:ui.layoutVisibility"] = new Dictionary<string, object>
+        {
+            ["presentation"] = "OutputOnly"
+        };
+        cell.Metadata[CellViewStateMetadata.OutputVisibilityKey] = CellViewStateMetadata.OutputHidden;
+
+        var md = ExportToString(null, new[] { cell }, MakePresentationOptions());
+
+        Assert.IsFalse(md.Contains("SELECT *"));
+        Assert.IsFalse(md.Contains("tabular-result"));
+    }
+
     private static string ExportToString(string? title, IReadOnlyList<CellModel> cells)
     {
         var bytes = NotebookMarkdownExporter.Export(title, cells);

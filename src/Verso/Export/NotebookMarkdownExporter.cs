@@ -29,6 +29,7 @@ internal static class NotebookMarkdownExporter
         var useVisibility = options?.LayoutId is not null
             && options.SupportedVisibilityStates is not null
             && options.Renderers is not null;
+        var respectViewState = options?.RespectCellViewState ?? true;
 
         // Title
         if (!string.IsNullOrEmpty(title))
@@ -42,53 +43,66 @@ internal static class NotebookMarkdownExporter
         {
             var cell = cells[i];
 
+            var layoutState = CellVisibilityState.Visible;
             if (useVisibility)
             {
                 var renderer = options!.Renderers!.FirstOrDefault(r =>
                     string.Equals(r.CellTypeId, cell.Type, StringComparison.OrdinalIgnoreCase)) ?? FallbackRenderer;
-                var visibility = CellVisibilityResolver.Resolve(cell, renderer, options.LayoutId!, options.SupportedVisibilityStates!);
+                layoutState = CellVisibilityResolver.Resolve(cell, renderer, options.LayoutId!, options.SupportedVisibilityStates!);
 
-                switch (visibility)
+                if (layoutState == CellVisibilityState.Hidden)
+                    continue;
+
+                if (layoutState == CellVisibilityState.Collapsed)
                 {
-                    case CellVisibilityState.Hidden:
-                        continue;
-                    case CellVisibilityState.OutputOnly:
-                        if (renderedCount > 0) sb.AppendLine();
-                        RenderOutputsOnly(sb, cell);
-                        renderedCount++;
-                        continue;
-                    case CellVisibilityState.Collapsed:
-                        if (renderedCount > 0) sb.AppendLine();
-                        sb.Append("> [collapsed] ").Append(cell.Type ?? "cell").Append(": ");
-                        var collapsedTitle = !string.IsNullOrWhiteSpace(cell.Source)
-                            ? cell.Source.Split('\n')[0].TrimStart('#', ' ').Trim()
-                            : "Untitled";
-                        sb.AppendLine(collapsedTitle);
-                        renderedCount++;
-                        continue;
+                    if (renderedCount > 0) sb.AppendLine();
+                    sb.Append("> [collapsed] ").Append(cell.Type ?? "cell").Append(": ");
+                    var collapsedTitle = !string.IsNullOrWhiteSpace(cell.Source)
+                        ? cell.Source.Split('\n')[0].TrimStart('#', ' ').Trim()
+                        : "Untitled";
+                    sb.AppendLine(collapsedTitle);
+                    renderedCount++;
+                    continue;
                 }
             }
 
-            // Blank line between cells
+            var outputVisibility = respectViewState
+                ? CellViewStateReader.ReadOutputVisibility(cell)
+                : CellViewStateMetadata.OutputExpanded;
+            var inputCollapsed = respectViewState && CellViewStateReader.ReadInputCollapsed(cell);
+            var outputPreviewLineCount = CellViewStateReader.ReadOutputPreviewLineCount(cell);
+
+            var hideSource = layoutState == CellVisibilityState.OutputOnly || inputCollapsed;
+            var hideOutputs = string.Equals(outputVisibility, CellViewStateMetadata.OutputHidden, StringComparison.Ordinal);
+            var previewOutputs = string.Equals(outputVisibility, CellViewStateMetadata.OutputPreview, StringComparison.Ordinal);
+
+            if (hideSource && (hideOutputs || cell.Outputs.Count == 0))
+                continue;
+
             if (renderedCount > 0) sb.AppendLine();
 
-            if (string.Equals(cell.Type, "markdown", StringComparison.OrdinalIgnoreCase))
+            if (!hideSource)
             {
-                sb.AppendLine(cell.Source);
-            }
-            else
-            {
-                // Fenced code block with language tag
-                sb.Append("```").AppendLine(cell.Language ?? "");
-                sb.AppendLine(cell.Source);
-                sb.AppendLine("```");
+                if (string.Equals(cell.Type, "markdown", StringComparison.OrdinalIgnoreCase))
+                {
+                    sb.AppendLine(cell.Source);
+                }
+                else
+                {
+                    // Fenced code block with language tag
+                    sb.Append("```").AppendLine(cell.Language ?? "");
+                    sb.AppendLine(cell.Source);
+                    sb.AppendLine("```");
+                }
             }
 
-            // Outputs
-            foreach (var output in cell.Outputs)
+            if (!hideOutputs)
             {
-                sb.AppendLine();
-                RenderOutput(sb, output);
+                for (int j = 0; j < cell.Outputs.Count; j++)
+                {
+                    if (j > 0 || !hideSource) sb.AppendLine();
+                    RenderOutput(sb, cell.Outputs[j], previewOutputs, outputPreviewLineCount);
+                }
             }
 
             renderedCount++;
@@ -97,16 +111,7 @@ internal static class NotebookMarkdownExporter
         return Encoding.UTF8.GetBytes(sb.ToString());
     }
 
-    private static void RenderOutputsOnly(StringBuilder sb, CellModel cell)
-    {
-        for (int j = 0; j < cell.Outputs.Count; j++)
-        {
-            if (j > 0) sb.AppendLine();
-            RenderOutput(sb, cell.Outputs[j]);
-        }
-    }
-
-    private static void RenderOutput(StringBuilder sb, CellOutput output)
+    private static void RenderOutput(StringBuilder sb, CellOutput output, bool previewText, int previewLineCount)
     {
         if (output.IsError)
         {
@@ -142,10 +147,7 @@ internal static class NotebookMarkdownExporter
                 sb.AppendLine("> Output:");
                 sb.AppendLine(">");
                 sb.AppendLine("> ```");
-                foreach (var line in output.Content.Split('\n'))
-                {
-                    sb.Append("> ").AppendLine(line);
-                }
+                WritePreviewableLines(sb, output.Content, previewText, previewLineCount);
                 sb.AppendLine("> ```");
                 break;
 
@@ -169,12 +171,30 @@ internal static class NotebookMarkdownExporter
                 sb.AppendLine("> Output:");
                 sb.AppendLine(">");
                 sb.AppendLine("> ```");
-                foreach (var line in output.Content.Split('\n'))
-                {
-                    sb.Append("> ").AppendLine(line);
-                }
+                WritePreviewableLines(sb, output.Content, previewText, previewLineCount);
                 sb.AppendLine("> ```");
                 break;
+        }
+    }
+
+    private static void WritePreviewableLines(StringBuilder sb, string content, bool previewText, int previewLineCount)
+    {
+        var lines = content.Split('\n');
+        if (previewText && previewLineCount > 0 && lines.Length > previewLineCount)
+        {
+            for (int i = 0; i < previewLineCount; i++)
+            {
+                sb.Append("> ").AppendLine(lines[i]);
+            }
+            var omitted = lines.Length - previewLineCount;
+            sb.Append("> ... (").Append(omitted).AppendLine(omitted == 1 ? " more line)" : " more lines)");
+        }
+        else
+        {
+            foreach (var line in lines)
+            {
+                sb.Append("> ").AppendLine(line);
+            }
         }
     }
 }
