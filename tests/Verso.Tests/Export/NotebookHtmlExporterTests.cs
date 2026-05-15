@@ -53,6 +53,34 @@ public sealed class NotebookHtmlExporterTests
     }
 
     [TestMethod]
+    public void Export_ExecutedMarkdownCell_DoesNotDuplicateRenderedSource()
+    {
+        // After execution, markdown cells hold the Markdig-rendered HTML as a
+        // text/html output. The exporter must not also render the output, or
+        // the heading appears twice in the document.
+        var cells = new[]
+        {
+            new CellModel
+            {
+                Type = "markdown",
+                Source = "# Important Chart",
+                Outputs = { new CellOutput("text/html", "<h1 id=\"important-chart\">Important Chart</h1>\n") }
+            }
+        };
+
+        var html = ExportToString(null, cells, null);
+
+        var bodyStart = html.IndexOf("<body>", StringComparison.Ordinal);
+        Assert.IsTrue(bodyStart >= 0);
+        var body = html[bodyStart..];
+
+        var firstHeading = body.IndexOf("Important Chart</h1>", StringComparison.Ordinal);
+        Assert.IsTrue(firstHeading >= 0, "Heading should be rendered at least once");
+        var secondHeading = body.IndexOf("Important Chart</h1>", firstHeading + 1, StringComparison.Ordinal);
+        Assert.AreEqual(-1, secondHeading, "Heading must not appear twice in exported body");
+    }
+
+    [TestMethod]
     public void Export_CodeCell_SourceInPreCode()
     {
         var cells = new[]

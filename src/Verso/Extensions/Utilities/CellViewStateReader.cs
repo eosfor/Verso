@@ -5,10 +5,10 @@ namespace Verso.Extensions.Utilities;
 
 /// <summary>
 /// Reads per-cell view-state metadata written by <c>CellDisplayPropertyProvider</c>
-/// (the <c>verso:ui.*</c> keys). Used by exporters that honor a subset of the
-/// user-actionable display settings.
+/// (the <c>verso:ui.*</c> keys). Used by exporters and the CLI to honor a subset
+/// of the user-actionable display settings.
 /// </summary>
-internal static class CellViewStateReader
+public static class CellViewStateReader
 {
     /// <summary>
     /// Returns the cell's output visibility setting, normalized to one of

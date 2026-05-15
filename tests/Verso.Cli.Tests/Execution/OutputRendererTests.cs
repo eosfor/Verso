@@ -293,6 +293,89 @@ public class OutputRendererTests
         Assert.IsTrue(output.Contains("no parameters"));
     }
 
+    [TestMethod]
+    public void RenderCell_OutputHidden_SkipsOutputsButShowsHeader()
+    {
+        var renderer = new OutputRenderer(_stdout, _stderr, verbose: false);
+        var cell = CreateCodeCell("csharp", new CellOutput("text/plain", "secret content"));
+        cell.Metadata["verso:ui.outputVisibility"] = "hidden";
+        var result = ExecutionResult.Success(cell.Id, 1, TimeSpan.FromSeconds(1));
+
+        renderer.RenderCell(0, cell, result);
+
+        var output = _stdout.ToString();
+        Assert.IsTrue(output.Contains("Cell 0"), "Cell header should still appear");
+        Assert.IsFalse(output.Contains("secret content"), "Hidden outputs must not render");
+    }
+
+    [TestMethod]
+    public void RenderCell_OutputHidden_IgnoredWhenRespectViewStateFalse()
+    {
+        var renderer = new OutputRenderer(_stdout, _stderr, verbose: false, respectViewState: false);
+        var cell = CreateCodeCell("csharp", new CellOutput("text/plain", "visible"));
+        cell.Metadata["verso:ui.outputVisibility"] = "hidden";
+        var result = ExecutionResult.Success(cell.Id, 1, TimeSpan.FromSeconds(1));
+
+        renderer.RenderCell(0, cell, result);
+
+        Assert.IsTrue(_stdout.ToString().Contains("visible"),
+            "--ignore-view-state override must render hidden outputs");
+    }
+
+    [TestMethod]
+    public void RenderCell_OutputPreview_TruncatesTextPlainToPreviewLineCount()
+    {
+        var renderer = new OutputRenderer(_stdout, _stderr, verbose: false);
+        var content = string.Join('\n', Enumerable.Range(1, 12).Select(i => $"line{i}"));
+        var cell = CreateCodeCell("csharp", new CellOutput("text/plain", content));
+        cell.Metadata["verso:ui.outputVisibility"] = "preview";
+        cell.Metadata["verso:ui.outputPreviewLineCount"] = 3;
+        var result = ExecutionResult.Success(cell.Id, 1, TimeSpan.FromSeconds(1));
+
+        renderer.RenderCell(0, cell, result);
+
+        var output = _stdout.ToString();
+        Assert.IsTrue(output.Contains("line1"));
+        Assert.IsTrue(output.Contains("line2"));
+        Assert.IsTrue(output.Contains("line3"));
+        Assert.IsFalse(output.Contains("line4"), "Lines past the preview limit must not render");
+        Assert.IsTrue(output.Contains("9 more lines"), "Should annotate omitted line count");
+    }
+
+    [TestMethod]
+    public void RenderCell_OutputPreview_NoTruncationWhenOutputFitsInPreview()
+    {
+        var renderer = new OutputRenderer(_stdout, _stderr, verbose: false);
+        var cell = CreateCodeCell("csharp", new CellOutput("text/plain", "short"));
+        cell.Metadata["verso:ui.outputVisibility"] = "preview";
+        var result = ExecutionResult.Success(cell.Id, 1, TimeSpan.FromSeconds(1));
+
+        renderer.RenderCell(0, cell, result);
+
+        var output = _stdout.ToString();
+        Assert.IsTrue(output.Contains("short"));
+        Assert.IsFalse(output.Contains("more line"));
+    }
+
+    [TestMethod]
+    public void RenderCell_MarkdownInputCollapsed_SkipsSourceWhenIncludeMarkdown()
+    {
+        var renderer = new OutputRenderer(_stdout, _stderr, verbose: false, includeMarkdown: true);
+        var cell = new CellModel
+        {
+            Type = "markdown",
+            Source = "# Heading body"
+        };
+        cell.Metadata["verso:ui.inputCollapsed"] = true;
+        var result = ExecutionResult.Success(cell.Id, 1, TimeSpan.FromSeconds(1));
+
+        renderer.RenderCell(0, cell, result);
+
+        var output = _stdout.ToString();
+        Assert.IsTrue(output.Contains("Cell 0"), "Cell header should still appear");
+        Assert.IsFalse(output.Contains("Heading body"), "Collapsed markdown source must not render");
+    }
+
     private static CellModel CreateCodeCell(string language, params CellOutput[] outputs)
     {
         var cell = new CellModel

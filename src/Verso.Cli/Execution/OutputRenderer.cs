@@ -1,6 +1,7 @@
 using System.Text.RegularExpressions;
 using Verso.Abstractions;
 using Verso.Execution;
+using Verso.Extensions.Utilities;
 
 namespace Verso.Cli.Execution;
 
@@ -14,16 +15,19 @@ public sealed partial class OutputRenderer
     private readonly bool _verbose;
     private readonly bool _includeMarkdown;
     private readonly bool _showParameters;
+    private readonly bool _respectViewState;
     private readonly bool _supportsAnsi;
 
     public OutputRenderer(TextWriter stdout, TextWriter stderr, bool verbose,
-        bool includeMarkdown = false, bool showParameters = false)
+        bool includeMarkdown = false, bool showParameters = false,
+        bool respectViewState = true)
     {
         _stdout = stdout;
         _stderr = stderr;
         _verbose = verbose;
         _includeMarkdown = includeMarkdown;
         _showParameters = showParameters;
+        _respectViewState = respectViewState;
         _supportsAnsi = !Console.IsOutputRedirected;
     }
 
@@ -42,14 +46,25 @@ public sealed partial class OutputRenderer
     public void RenderCell(int index, CellModel cell, ExecutionResult result,
         Dictionary<string, object>? resolvedParameters = null)
     {
+        var outputVisibility = _respectViewState
+            ? CellViewStateReader.ReadOutputVisibility(cell)
+            : CellViewStateMetadata.OutputExpanded;
+        var inputCollapsed = _respectViewState && CellViewStateReader.ReadInputCollapsed(cell);
+        var hideOutputs = string.Equals(outputVisibility, CellViewStateMetadata.OutputHidden, StringComparison.Ordinal);
+        var previewOutputs = string.Equals(outputVisibility, CellViewStateMetadata.OutputPreview, StringComparison.Ordinal);
+        var previewLineCount = CellViewStateReader.ReadOutputPreviewLineCount(cell);
+
         if (cell.Type is "code")
         {
             var language = cell.Language ?? "unknown";
             _stdout.WriteLine($"\u2500\u2500\u2500 Cell {index} ({language}) \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500");
 
-            foreach (var output in cell.Outputs)
+            if (!hideOutputs)
             {
-                RenderOutput(output);
+                foreach (var output in cell.Outputs)
+                {
+                    RenderOutput(output, previewOutputs, previewLineCount);
+                }
             }
 
             _stdout.WriteLine();
@@ -77,7 +92,7 @@ public sealed partial class OutputRenderer
         {
             _stdout.WriteLine($"\u2500\u2500\u2500 Cell {index} (markdown) \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500");
 
-            if (!string.IsNullOrWhiteSpace(cell.Source))
+            if (!inputCollapsed && !string.IsNullOrWhiteSpace(cell.Source))
                 _stdout.WriteLine(cell.Source);
 
             _stdout.WriteLine();
@@ -86,9 +101,12 @@ public sealed partial class OutputRenderer
         {
             _stdout.WriteLine($"\u2500\u2500\u2500 Cell {index} (html) \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500");
 
-            var stripped = StripHtmlTags(cell.Source);
-            if (!string.IsNullOrWhiteSpace(stripped))
-                _stdout.WriteLine(stripped);
+            if (!inputCollapsed)
+            {
+                var stripped = StripHtmlTags(cell.Source);
+                if (!string.IsNullOrWhiteSpace(stripped))
+                    _stdout.WriteLine(stripped);
+            }
 
             _stdout.WriteLine();
         }
@@ -108,7 +126,7 @@ public sealed partial class OutputRenderer
         _stdout.WriteLine($"Time:  {totalElapsed.TotalSeconds:F1}s");
     }
 
-    private void RenderOutput(CellOutput output)
+    private void RenderOutput(CellOutput output, bool preview, int previewLineCount)
     {
         switch (output.MimeType)
         {
@@ -116,13 +134,13 @@ public sealed partial class OutputRenderer
                 if (output.IsError)
                     WriteError(output.Content);
                 else
-                    _stdout.WriteLine(output.Content);
+                    WriteMaybeTruncated(output.Content, preview, previewLineCount);
                 break;
 
             case "text/html":
                 var stripped = StripHtmlTags(output.Content);
                 if (!string.IsNullOrWhiteSpace(stripped))
-                    _stdout.WriteLine(stripped);
+                    WriteMaybeTruncated(stripped, preview, previewLineCount);
                 break;
 
             case "application/json":
@@ -145,7 +163,7 @@ public sealed partial class OutputRenderer
 
             case "text/markdown":
                 if (_includeMarkdown && !string.IsNullOrWhiteSpace(output.Content))
-                    _stdout.WriteLine(output.Content);
+                    WriteMaybeTruncated(output.Content, preview, previewLineCount);
                 break;
 
             default:
@@ -157,6 +175,28 @@ public sealed partial class OutputRenderer
                     _stdout.WriteLine(output.Content);
                 break;
         }
+    }
+
+    private void WriteMaybeTruncated(string content, bool preview, int previewLineCount)
+    {
+        if (!preview || previewLineCount <= 0)
+        {
+            _stdout.WriteLine(content);
+            return;
+        }
+
+        var lines = content.Split('\n');
+        if (lines.Length <= previewLineCount)
+        {
+            _stdout.WriteLine(content);
+            return;
+        }
+
+        for (var i = 0; i < previewLineCount; i++)
+            _stdout.WriteLine(lines[i]);
+
+        var omitted = lines.Length - previewLineCount;
+        _stdout.WriteLine($"... ({omitted} more {(omitted == 1 ? "line" : "lines")})");
     }
 
     private void WriteError(string content)

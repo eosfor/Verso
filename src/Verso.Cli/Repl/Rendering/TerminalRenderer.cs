@@ -3,6 +3,7 @@ using Spectre.Console.Rendering;
 using Verso.Abstractions;
 using Verso.Cli.Repl.Settings;
 using Verso.Execution;
+using Verso.Extensions.Utilities;
 
 namespace Verso.Cli.Repl.Rendering;
 
@@ -38,6 +39,25 @@ public sealed class TerminalRenderer
         var policy = TruncationPolicy.FromSettings(_settings ?? new ReplSettings());
         var hasError = result.Status == ExecutionResult.ExecutionStatus.Failed || cell.Outputs.Any(o => o.IsError);
 
+        // Honor verso:ui.outputVisibility for cells that carry the metadata (i.e. those
+        // loaded from a .verso file). Interactive REPL cells never have this metadata,
+        // so the live shell is unaffected. Per spec, "preview" is treated as expanded
+        // in the REPL — the REPL is already line-oriented, so we do not truncate here.
+        var hideOutputs = string.Equals(
+            CellViewStateReader.ReadOutputVisibility(cell),
+            CellViewStateMetadata.OutputHidden,
+            StringComparison.Ordinal);
+
+        if (hideOutputs)
+        {
+            // Errors always surface — view-state should not silently swallow failures.
+            if (!hasError)
+            {
+                MaybePrintElapsed(result, elapsedThreshold);
+                return;
+            }
+        }
+
         if (cell.Outputs.Count == 0 && !hasError)
         {
             MaybePrintElapsed(result, elapsedThreshold);
@@ -45,8 +65,20 @@ public sealed class TerminalRenderer
         }
 
         var items = new List<IRenderable>();
-        for (int i = 0; i < cell.Outputs.Count; i++)
-            items.Add(_dispatcher.AsRenderable(cell.Outputs[i], inputCounter, i, policy));
+        if (!hideOutputs)
+        {
+            for (int i = 0; i < cell.Outputs.Count; i++)
+                items.Add(_dispatcher.AsRenderable(cell.Outputs[i], inputCounter, i, policy));
+        }
+        else
+        {
+            // hideOutputs && hasError: emit only the error outputs so users still see failures.
+            for (int i = 0; i < cell.Outputs.Count; i++)
+            {
+                if (cell.Outputs[i].IsError)
+                    items.Add(_dispatcher.AsRenderable(cell.Outputs[i], inputCounter, i, policy));
+            }
+        }
 
         // Surface implicit execution errors (no IsError output but ExecutionResult.Failed).
         if (result.Status == ExecutionResult.ExecutionStatus.Failed && cell.Outputs.All(o => !o.IsError))

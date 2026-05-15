@@ -62,6 +62,9 @@ public static class RunCommand
         var trustLocalOption = new Option<bool>("--trust-local-assemblies", () => false,
             "Allow loading assemblies generated during the current session without consent.");
 
+        var ignoreViewStateOption = new Option<bool>("--ignore-view-state", () => false,
+            "Ignore per-cell verso:ui.outputVisibility and verso:ui.inputCollapsed metadata; show all outputs in full.");
+
         var command = new Command("run", "Execute a notebook headlessly and stream cell outputs.")
         {
             notebookArg,
@@ -78,7 +81,8 @@ public static class RunCommand
             interactiveOption,
             includeMarkdownOption,
             showParametersOption,
-            trustLocalOption
+            trustLocalOption,
+            ignoreViewStateOption
         };
 
         command.SetHandler(async (context) =>
@@ -98,6 +102,7 @@ public static class RunCommand
             var includeMarkdown = context.ParseResult.GetValueForOption(includeMarkdownOption);
             var showParameters = context.ParseResult.GetValueForOption(showParametersOption);
             var trustLocal = context.ParseResult.GetValueForOption(trustLocalOption);
+            var ignoreViewState = context.ParseResult.GetValueForOption(ignoreViewStateOption);
 
             // Parse --param name=value pairs into a dictionary
             var paramDict = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
@@ -177,7 +182,8 @@ public static class RunCommand
             switch (output)
             {
                 case OutputFormat.Text:
-                    var renderer = new OutputRenderer(Console.Out, Console.Error, verbose, includeMarkdown, showParameters);
+                    var renderer = new OutputRenderer(Console.Out, Console.Error, verbose, includeMarkdown, showParameters,
+                        respectViewState: !ignoreViewState);
                     for (var i = 0; i < result.Cells.Count; i++)
                     {
                         var cell = result.Cells[i];

@@ -38,6 +38,30 @@ public sealed class NotebookMarkdownExporterTests
     }
 
     [TestMethod]
+    public void Export_ExecutedMarkdownCell_DoesNotDuplicateRenderedSource()
+    {
+        // After execution, markdown cells hold the rendered HTML as a text/html
+        // output. The exporter must not also emit that output, or the heading
+        // would appear once as Markdown source and again as a rendered block.
+        var cells = new[]
+        {
+            new CellModel
+            {
+                Type = "markdown",
+                Source = "# Important Chart",
+                Outputs = { new CellOutput("text/html", "<h1 id=\"important-chart\">Important Chart</h1>\n") }
+            }
+        };
+
+        var md = ExportToString(null, cells);
+
+        var first = md.IndexOf("Important Chart", StringComparison.Ordinal);
+        Assert.IsTrue(first >= 0);
+        var second = md.IndexOf("Important Chart", first + 1, StringComparison.Ordinal);
+        Assert.AreEqual(-1, second, "Heading must not appear twice in exported markdown");
+    }
+
+    [TestMethod]
     public void Export_CodeCell_FencedBlockWithLanguage()
     {
         var cells = new[]

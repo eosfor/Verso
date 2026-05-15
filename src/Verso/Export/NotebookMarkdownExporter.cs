@@ -96,7 +96,11 @@ internal static class NotebookMarkdownExporter
                 }
             }
 
-            if (!hideOutputs)
+            // Markdown cells store their rendered HTML as an output during execution,
+            // which would duplicate the source we just emitted. Skip the outputs loop
+            // for markdown cells; the source is already the rendered content.
+            var isMarkdown = string.Equals(cell.Type, "markdown", StringComparison.OrdinalIgnoreCase);
+            if (!hideOutputs && !isMarkdown)
             {
                 for (int j = 0; j < cell.Outputs.Count; j++)
                 {
