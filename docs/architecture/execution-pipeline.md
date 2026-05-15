@@ -216,6 +216,8 @@ The PowerShell kernel uses this capability through its internal host adapter aro
 
 PowerShell host output (`Write-Host`, warnings, errors, verbose/debug output, and similar `PSHostUserInterface` writes) is converted to `text/plain` `CellOutput` values and written through `WriteOutputAsync`. ANSI escape sequences are currently stripped before display so host output stays readable in cell output. Future work may parse supported ANSI SGR sequences into safe rich output instead of discarding them.
 
+The PowerShell kernel also performs best-effort module path setup for Gallery workflows. The SDK runtime provides the core PowerShell modules, but may not include `PowerShellGet`, `PackageManagement`, or `Microsoft.PowerShell.PSResourceGet`. During runspace initialization, Verso tries to discover an external `pwsh` executable and adds its `$PSHOME/Modules` directory to `PSModulePath` when module-management modules are present there. If no external PowerShell installation is available, the kernel still starts normally; commands such as `Find-Module`, `Install-Module`, `Find-PSResource`, and `Install-PSResource` then require the user to install or expose the corresponding module-management modules.
+
 ## Execution Result
 
 `ExecutionResult` is an immutable record returned by the pipeline:

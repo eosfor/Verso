@@ -28,6 +28,13 @@ internal sealed class RunspaceManager : IDisposable
     {
         if (_runspace is not null) return;
 
+        var modulePath = PowerShellModulePathResolver.EnhanceWithExternalPowerShellModules(
+            Environment.GetEnvironmentVariable("PSModulePath"));
+        if (!string.IsNullOrWhiteSpace(modulePath))
+        {
+            Environment.SetEnvironmentVariable("PSModulePath", modulePath);
+        }
+
         var iss = InitialSessionState.CreateDefault2();
         iss.ThreadOptions = PSThreadOptions.UseCurrentThread;
 
