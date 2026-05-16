@@ -1,9 +1,9 @@
 using System.Management.Automation;
 using System.Management.Automation.Host;
 
-namespace Verso.PowerShellHost;
+namespace Verso.PowerShell.Kernel.Host;
 
-public sealed class VersoPowerShellRawUserInterface : PSHostRawUserInterface
+internal sealed class VersoPowerShellRawUserInterface : PSHostRawUserInterface
 {
     private ConsoleColor _backgroundColor = ConsoleColor.Black;
     private Size _bufferSize = new(120, 3000);

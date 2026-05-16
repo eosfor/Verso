@@ -82,7 +82,7 @@ Engine events are forwarded to the UI through `Action?` events on the service, w
 
 ### Project References
 
-Verso.Blazor references the engine (`Verso`), all kernel extension packages (`Verso.FSharp`, `Verso.JavaScript`, `Verso.Python`, `Verso.PowerShell`, `Verso.Ado`, `Verso.Http`), the PowerShell host adapter (`Verso.PowerShellHost` through `Verso.PowerShell`), and the shared UI library (`Verso.Blazor.Shared`).
+Verso.Blazor references the engine (`Verso`), all kernel extension packages (`Verso.FSharp`, `Verso.JavaScript`, `Verso.Python`, `Verso.PowerShell`, `Verso.Ado`, `Verso.Http`), and the shared UI library (`Verso.Blazor.Shared`). The PowerShell host adapter is internal to `Verso.PowerShell`.
 
 ## VS Code Extension
 

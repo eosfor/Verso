@@ -6,9 +6,9 @@ using System.Security;
 using System.Text;
 using System.Text.RegularExpressions;
 
-namespace Verso.PowerShellHost;
+namespace Verso.PowerShell.Kernel.Host;
 
-public sealed partial class VersoPowerShellHostUserInterface : PSHostUserInterface
+internal sealed partial class VersoPowerShellHostUserInterface : PSHostUserInterface
 {
     private const string PlainText = "text/plain";
     private const string InteractiveInputMessage = "Interactive PowerShell input is not supported by Verso yet.";

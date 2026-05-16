@@ -1,6 +1,6 @@
-namespace Verso.PowerShellHost;
+namespace Verso.PowerShell.Kernel.Host;
 
-public sealed record PowerShellHostOutput(
+internal sealed record PowerShellHostOutput(
     string MimeType,
     string Content,
     bool IsError = false,

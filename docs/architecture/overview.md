@@ -36,8 +36,7 @@ The architecture separates into three layers. The engine knows nothing about the
 |  +------------------------------------------------------+ |
 |  |  First-Party Extension Packages                      | |
 |  |  Verso.FSharp - Verso.JavaScript - Verso.PowerShell  | |
-|  |  (+ Verso.PowerShellHost) - Verso.Python - Verso.Ado | |
-|  |  Verso.Http                                          | |
+|  |  Verso.Python - Verso.Ado - Verso.Http               | |
 |  +------------------------------------------------------+ |
 +-----------------------------------------------------------+
                            |
@@ -140,8 +139,7 @@ Verso                       (engine: Scaffold, ExtensionHost, Pipeline)
     ^
     |--- Verso.FSharp       (F# kernel extension)
     |--- Verso.JavaScript   (JS/TS kernel extension)
-    |--- Verso.PowerShell   (PowerShell kernel extension)
-    |       \--- Verso.PowerShellHost (PowerShell PSHost adapter)
+    |--- Verso.PowerShell   (PowerShell kernel extension with internal PSHost adapter)
     |--- Verso.Python       (Python kernel extension)
     |--- Verso.Ado          (SQL kernel extension)
     |--- Verso.Http         (HTTP kernel extension)

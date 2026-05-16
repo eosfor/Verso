@@ -212,7 +212,7 @@ This mechanism streams outputs that are explicitly written through the execution
 
 `IExecutionContext.RequestInputAsync(prompt, isPassword, ct)` asks the current host to collect a single line of input. It returns the entered value or `null` when the user cancels. The default interface implementation throws `NotSupportedException`, so kernels should treat this as an optional host capability.
 
-The PowerShell kernel uses this capability through `Verso.PowerShellHost`, an adapter around PowerShell's `PSHost` / `PSHostUserInterface` APIs. It maps host prompts such as `Read-Host`, credential prompts, and choice prompts onto `RequestInputAsync`. In VS Code, the request is delivered as an `input/request` notification and answered with `input/response`.
+The PowerShell kernel uses this capability through its internal host adapter around PowerShell's `PSHost` / `PSHostUserInterface` APIs. It maps host prompts such as `Read-Host`, credential prompts, and choice prompts onto `RequestInputAsync`. In VS Code, the request is delivered as an `input/request` notification and answered with `input/response`.
 
 PowerShell host output (`Write-Host`, warnings, errors, verbose/debug output, and similar `PSHostUserInterface` writes) is converted to `text/plain` `CellOutput` values and written through `WriteOutputAsync`. ANSI escape sequences are currently stripped before display so host output stays readable in cell output. Future work may parse supported ANSI SGR sequences into safe rich output instead of discarding them.
 

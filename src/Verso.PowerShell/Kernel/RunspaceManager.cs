@@ -5,7 +5,7 @@ using System.Management.Automation.Runspaces;
 using System.Net;
 using System.Text;
 using Verso.Abstractions;
-using Verso.PowerShellHost;
+using Verso.PowerShell.Kernel.Host;
 
 namespace Verso.PowerShell.Kernel;
 

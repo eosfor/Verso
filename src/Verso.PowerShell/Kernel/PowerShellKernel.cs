@@ -1,5 +1,5 @@
 using Verso.Abstractions;
-using Verso.PowerShellHost;
+using Verso.PowerShell.Kernel.Host;
 
 namespace Verso.PowerShell.Kernel;
 

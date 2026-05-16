@@ -2,9 +2,9 @@ using System.Globalization;
 using System.Management.Automation;
 using System.Management.Automation.Host;
 
-namespace Verso.PowerShellHost;
+namespace Verso.PowerShell.Kernel.Host;
 
-public sealed class VersoPowerShellHost : PSHost
+internal sealed class VersoPowerShellHost : PSHost
 {
     private readonly VersoPowerShellHostUserInterface _ui;
 
