@@ -313,6 +313,7 @@
     private IReadOnlyList<ExtensionConsentInfo>? _pendingConsentExtensions;
     private bool _showInputDialog;
     private ServerInputRequest? _pendingInputRequest;
+    private bool _executionInProgress;
     private Timer? _autoSaveTimer;
     private bool _userPrefsApplied;
     private bool _restoringPrefs;
@@ -938,23 +939,8 @@
         _selectedCellId = cell.Id;
     }
 
-    private async Task HandleRunCell(Guid cellId)
-    {
-        // _executingCellId and cell metadata are managed by HandleCellExecutingEvent /
-        // HandleCellExecutedEvent (driven by Scaffold.OnCellExecuting/OnCellExecuted).
-        try
-        {
-            await Service.ExecuteCellAsync(cellId);
-        }
-        catch (Exception ex) when (ex is OperationCanceledException || ex.Message.Contains("operation was canceled", StringComparison.OrdinalIgnoreCase))
-        {
-            // User-initiated cancellation is not an error; the cell's status badge already shows it.
-        }
-        catch (Exception ex)
-        {
-            _error = $"Execution error: {ex.Message}";
-        }
-    }
+    private Task HandleRunCell(Guid cellId)
+        => StartExecutionAsync(async () => await Service.ExecuteCellAsync(cellId));
 
     private async Task HandleCancelCell(Guid cellId)
     {
@@ -965,6 +951,46 @@
         catch (Exception ex)
         {
             _error = $"Cancel error: {ex.Message}";
+        }
+    }
+
+    private Task StartExecutionAsync(Func<Task> executeAsync)
+    {
+        if (_executionInProgress)
+            return Task.CompletedTask;
+
+        _executionInProgress = true;
+        _ = Task.Run(() => RunExecutionAsync(executeAsync));
+        return Task.CompletedTask;
+    }
+
+    private async Task RunExecutionAsync(Func<Task> executeAsync)
+    {
+        // _executingCellId and cell metadata are managed by HandleCellExecutingEvent /
+        // HandleCellExecutedEvent (driven by Scaffold.OnCellExecuting/OnCellExecuted).
+        try
+        {
+            await executeAsync();
+        }
+        catch (Exception ex) when (ex is OperationCanceledException || ex.Message.Contains("operation was canceled", StringComparison.OrdinalIgnoreCase))
+        {
+            // User-initiated cancellation is not an error; the cell's status badge already shows it.
+        }
+        catch (Exception ex)
+        {
+            await InvokeAsync(() =>
+            {
+                _error = $"Execution error: {ex.Message}";
+                StateHasChanged();
+            });
+        }
+        finally
+        {
+            await InvokeAsync(() =>
+            {
+                _executionInProgress = false;
+                StateHasChanged();
+            });
         }
     }
 
@@ -1062,25 +1088,8 @@
         }
     }
 
-    private async Task HandleRunAll()
-    {
-        // Per-cell UI updates (_executingCellId + StateHasChanged) are driven by
-        // HandleCellExecutingEvent / HandleCellExecutedEvent. Cell metadata
-        // (ExecutionCount, LastElapsed, LastStatus) is stamped inside Scaffold
-        // before OnCellExecuted fires, so the UI sees fresh values per cell.
-        try
-        {
-            await Service.ExecuteAllAsync();
-        }
-        catch (Exception ex) when (ex is OperationCanceledException || ex.Message.Contains("operation was canceled", StringComparison.OrdinalIgnoreCase))
-        {
-            // User-initiated cancellation is not an error.
-        }
-        catch (Exception ex)
-        {
-            _error = $"Execution error: {ex.Message}";
-        }
-    }
+    private Task HandleRunAll()
+        => StartExecutionAsync(async () => await Service.ExecuteAllAsync());
 
     private async Task SelectNextCell(Guid currentId, bool addIfLast = false)
     {
