@@ -141,14 +141,14 @@ internal sealed class RunspaceManager : IDisposable
                 warningLines.Add(warn.ToString());
             }
 
-            if (hostOutput is null)
+            foreach (var info in ps.Streams.Information)
             {
-                foreach (var info in ps.Streams.Information)
-                {
-                    var msg = info.MessageData?.ToString();
-                    if (!string.IsNullOrEmpty(msg))
-                        informationLines.Add(msg);
-                }
+                if (IsPowerShellHostInformation(info))
+                    continue;
+
+                var msg = info.MessageData?.ToString();
+                if (!string.IsNullOrEmpty(msg))
+                    informationLines.Add(msg);
             }
         }
         catch (RuntimeException ex)
@@ -169,6 +169,9 @@ internal sealed class RunspaceManager : IDisposable
 
         return new InvokeResult(outputLines, outputMimeType, errorLines, warningLines, informationLines, exception);
     }
+
+    private static bool IsPowerShellHostInformation(InformationRecord record) =>
+        record.Tags.Any(tag => string.Equals(tag, "PSHOST", StringComparison.OrdinalIgnoreCase));
 
     public void InjectDisplayFunction()
     {

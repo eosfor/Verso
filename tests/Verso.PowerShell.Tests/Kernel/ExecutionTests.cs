@@ -52,6 +52,17 @@ public class ExecutionTests
     }
 
     [TestMethod]
+    public async Task WriteInformation_WithContinueAction_ReturnsInformationOutput()
+    {
+        var outputs = await _kernel.ExecuteAsync(
+            "Write-Information 'info message' -InformationAction Continue",
+            _context);
+
+        var allText = string.Join(" ", outputs.Select(o => o.Content));
+        Assert.IsTrue(allText.Contains("info message"), $"Expected 'info message', got: {allText}");
+    }
+
+    [TestMethod]
     public async Task WriteHost_StreamsBeforeCommandCompletes()
     {
         var execution = Task.Run(() => _kernel.ExecuteAsync(

@@ -109,7 +109,7 @@ public sealed class PowerShellKernel : ILanguageKernel
                     outputs.Add(new CellOutput(result.OutputMimeType, text));
             }
 
-            // Information stream (Write-Host)
+            // Information stream (Write-Information)
             if (result.InformationLines.Count > 0)
             {
                 var text = string.Join(Environment.NewLine, result.InformationLines);
