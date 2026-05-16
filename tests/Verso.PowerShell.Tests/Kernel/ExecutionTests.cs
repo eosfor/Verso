@@ -60,6 +60,10 @@ public class ExecutionTests
 
         var allText = string.Join(" ", outputs.Select(o => o.Content));
         Assert.IsTrue(allText.Contains("info message"), $"Expected 'info message', got: {allText}");
+        Assert.AreEqual(
+            1,
+            outputs.Count(o => o.Content.Contains("info message")),
+            $"Expected 'info message' once, got: {allText}");
     }
 
     [TestMethod]

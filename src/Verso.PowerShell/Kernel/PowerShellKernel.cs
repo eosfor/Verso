@@ -112,7 +112,10 @@ public sealed class PowerShellKernel : ILanguageKernel
             // Information stream (Write-Information)
             if (result.InformationLines.Count > 0)
             {
-                var text = string.Join(Environment.NewLine, result.InformationLines);
+                var informationLines = result.InformationLines
+                    .Where(line => !HasMatchingPlainTextOutput(outputs, line))
+                    .ToList();
+                var text = string.Join(Environment.NewLine, informationLines);
                 if (!string.IsNullOrEmpty(text))
                     outputs.Add(new CellOutput("text/plain", text));
             }
@@ -145,6 +148,18 @@ public sealed class PowerShellKernel : ILanguageKernel
             _executionLock.Release();
         }
     }
+
+    private static bool HasMatchingPlainTextOutput(IEnumerable<CellOutput> outputs, string content) =>
+        outputs.Any(output =>
+            !output.IsError
+            && string.Equals(output.MimeType, "text/plain", StringComparison.OrdinalIgnoreCase)
+            && string.Equals(
+                NormalizePlainText(output.Content),
+                NormalizePlainText(content),
+                StringComparison.Ordinal));
+
+    private static string NormalizePlainText(string value) =>
+        value.Replace("\r\n", "\n", StringComparison.Ordinal).TrimEnd('\r', '\n');
 
     public async Task<IReadOnlyList<Completion>> GetCompletionsAsync(string code, int cursorPosition)
     {
