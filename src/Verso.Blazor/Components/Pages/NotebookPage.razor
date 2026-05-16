@@ -62,6 +62,14 @@
                                 OnConsentResult="HandleExtensionConsentResult" />
     }
 
+    @if (_showInputDialog && _pendingInputRequest is not null)
+    {
+        <NotebookInputDialog IsVisible="true"
+                             Request="_pendingInputRequest"
+                             OnSubmit="HandleInputSubmitted"
+                             OnCancel="HandleInputCancelled" />
+    }
+
     @if (_error is not null)
     {
         <div class="verso-error-banner">
@@ -303,6 +311,8 @@
     private ElementReference _saveDialogInput;
     private bool _showExtensionConsent;
     private IReadOnlyList<ExtensionConsentInfo>? _pendingConsentExtensions;
+    private bool _showInputDialog;
+    private ServerInputRequest? _pendingInputRequest;
     private Timer? _autoSaveTimer;
     private bool _userPrefsApplied;
     private bool _restoringPrefs;
@@ -335,7 +345,10 @@
         Service.OnOutputUpdated += HandleOutputUpdated;
 
         if (Service is ServerNotebookService serverService)
+        {
             serverService.OnExtensionConsentRequested += HandleExtensionConsentRequested;
+            serverService.OnInputRequested += HandleInputRequested;
+        }
     }
 
     private void HandleCellExecutedRefresh()
@@ -621,6 +634,37 @@
 
         if (Service is ServerNotebookService serverService)
             serverService.ResolveConsentResult(approved);
+    }
+
+    private void HandleInputRequested()
+    {
+        _ = InvokeAsync(() =>
+        {
+            if (Service is ServerNotebookService serverService)
+            {
+                _pendingInputRequest = serverService.PendingInputRequest;
+                _showInputDialog = _pendingInputRequest is not null;
+                StateHasChanged();
+            }
+        });
+    }
+
+    private void HandleInputSubmitted(string value)
+    {
+        _showInputDialog = false;
+        _pendingInputRequest = null;
+
+        if (Service is ServerNotebookService serverService)
+            serverService.ResolveInputResult(value, cancelled: false);
+    }
+
+    private void HandleInputCancelled()
+    {
+        _showInputDialog = false;
+        _pendingInputRequest = null;
+
+        if (Service is ServerNotebookService serverService)
+            serverService.ResolveInputResult(null, cancelled: true);
     }
 
     private async void HandleOutputUpdated()
@@ -1210,6 +1254,9 @@
         Service.OnOutputUpdated -= HandleOutputUpdated;
 
         if (Service is ServerNotebookService serverService)
+        {
             serverService.OnExtensionConsentRequested -= HandleExtensionConsentRequested;
+            serverService.OnInputRequested -= HandleInputRequested;
+        }
     }
 }
