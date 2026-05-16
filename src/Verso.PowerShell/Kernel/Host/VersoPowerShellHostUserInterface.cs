@@ -28,7 +28,7 @@ internal sealed partial class VersoPowerShellHostUserInterface : PSHostUserInter
 
     public override PSHostRawUserInterface RawUI => _rawUI;
 
-    public override bool SupportsVirtualTerminal => true;
+    public override bool SupportsVirtualTerminal => false;
 
     public override string ReadLine() => ReadInput(string.Empty, isPassword: false);
 
