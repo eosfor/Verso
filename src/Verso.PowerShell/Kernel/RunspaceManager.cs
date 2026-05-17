@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using System.Collections;
+using System.Globalization;
 using System.Management.Automation;
 using System.Management.Automation.Language;
 using System.Management.Automation.Runspaces;
@@ -357,13 +358,28 @@ function Display {
             if (GetMemberValue(tableHeaderInfo, "tableColumnInfoList") is not IEnumerable columnInfos)
                 return null;
 
+            var hideHeader = false;
+            var hideHeaderValue = GetMemberValue(tableHeaderInfo, "hideHeader");
+            if (hideHeaderValue is bool hideHeaderBool)
+            {
+                hideHeader = hideHeaderBool;
+            }
+            else if (hideHeaderValue is not null && bool.TryParse(hideHeaderValue.ToString(), out var parsedHideHeader))
+            {
+                hideHeader = parsedHideHeader;
+            }
+
             var columns = new List<(string Header, bool RightAlign)>();
             foreach (var columnInfo in columnInfos)
             {
                 if (columnInfo is null) continue;
                 var label = (GetMemberValue(columnInfo, "label")?.ToString() ?? string.Empty).Trim();
-                if (string.IsNullOrEmpty(label))
-                    label = (GetMemberValue(columnInfo, "propertyName")?.ToString() ?? string.Empty).Trim();
+                if (!hideHeader && string.IsNullOrEmpty(label))
+                {
+                    var propertyName = (GetMemberValue(columnInfo, "propertyName")?.ToString() ?? string.Empty).Trim();
+                    if (!string.IsNullOrEmpty(propertyName))
+                        label = propertyName;
+                }
 
                 var alignment = GetMemberValue(columnInfo, "alignment")?.ToString();
                 var rightAlign = string.Equals(alignment, "Right", StringComparison.OrdinalIgnoreCase);
@@ -372,11 +388,21 @@ function Display {
 
             if (columns.Count == 0) return null;
 
-            var rows = new List<List<string>>();
+            var rows = new List<(string? GroupHeader, List<string>? Cells)>();
+            var objectCount = 0;
             foreach (var result in results)
             {
                 var baseObject = result?.BaseObject;
-                if (!string.Equals(baseObject?.GetType().Name, "FormatEntryData", StringComparison.Ordinal))
+                var baseTypeName = baseObject?.GetType().Name;
+                if (string.Equals(baseTypeName, "GroupStartData", StringComparison.Ordinal))
+                {
+                    var groupHeader = baseObject is null ? null : TryGetGroupHeaderText(baseObject);
+                    if (!string.IsNullOrWhiteSpace(groupHeader))
+                        rows.Add((groupHeader, null));
+                    continue;
+                }
+
+                if (!string.Equals(baseTypeName, "FormatEntryData", StringComparison.Ordinal))
                     continue;
 
                 var tableRowEntry = baseObject is null ? null : GetMemberValue(baseObject, "formatEntryInfo");
@@ -391,24 +417,44 @@ function Display {
                 }
 
                 if (row.Count > 0)
-                    rows.Add(row);
+                {
+                    rows.Add((null, row));
+                    objectCount++;
+                }
             }
 
             var sb = new StringBuilder();
             AppendTableStyles(sb);
             sb.Append("<div class=\"verso-ps-result\">");
-            sb.Append("<table><thead><tr>");
-            foreach (var column in columns)
-                sb.Append("<th>").Append(WebUtility.HtmlEncode(column.Header)).Append("</th>");
-            sb.Append("</tr></thead><tbody>");
+            sb.Append("<table>");
+            if (!hideHeader)
+            {
+                sb.Append("<thead><tr>");
+                foreach (var column in columns)
+                    sb.Append("<th>").Append(WebUtility.HtmlEncode(column.Header)).Append("</th>");
+                sb.Append("</tr></thead>");
+            }
+
+            sb.Append("<tbody>");
 
             foreach (var row in rows)
             {
+                if (row.GroupHeader is not null)
+                {
+                    sb.Append("<tr class=\"verso-ps-group\"><td colspan=\"")
+                      .Append(columns.Count.ToString(CultureInfo.InvariantCulture))
+                      .Append("\">")
+                      .Append(WebUtility.HtmlEncode(row.GroupHeader))
+                      .Append("</td></tr>");
+                    continue;
+                }
+
                 sb.Append("<tr>");
                 for (var i = 0; i < columns.Count; i++)
                 {
                     sb.Append(columns[i].RightAlign ? "<td style=\"text-align:right;\">" : "<td>");
-                    var cellValue = i < row.Count ? row[i] : string.Empty;
+                    var cells = row.Cells;
+                    var cellValue = cells is not null && i < cells.Count ? cells[i] : string.Empty;
                     sb.Append(WebUtility.HtmlEncode(cellValue));
                     sb.Append("</td>");
                 }
@@ -417,7 +463,7 @@ function Display {
 
             sb.Append("</tbody></table>");
             sb.Append("<div class=\"verso-ps-footer\">")
-              .Append(rows.Count.ToString("N0"))
+              .Append(objectCount.ToString("N0"))
               .Append(" object(s)</div>");
             sb.Append("</div>");
 
@@ -427,6 +473,33 @@ function Display {
         {
             return null;
         }
+    }
+
+    private static string? TryGetGroupHeaderText(object groupStartData)
+    {
+        var groupingEntry = GetMemberValue(groupStartData, "groupingEntry");
+        var formattedValues = groupingEntry is null ? null : GetMemberValue(groupingEntry, "formatValueList") as IEnumerable;
+        if (formattedValues is null) return null;
+
+        var sb = new StringBuilder();
+        foreach (var formattedValue in formattedValues)
+        {
+            var valueParts = formattedValue is null ? null : GetMemberValue(formattedValue, "formatValueList") as IEnumerable;
+            if (valueParts is null) continue;
+
+            foreach (var valuePart in valueParts)
+            {
+                var text = valuePart is null
+                    ? null
+                    : GetMemberValue(valuePart, "text")?.ToString()
+                      ?? GetMemberValue(valuePart, "propertyValue")?.ToString();
+                if (!string.IsNullOrEmpty(text))
+                    sb.Append(text);
+            }
+        }
+
+        var headerText = sb.ToString().Trim();
+        return headerText.Length > 0 ? headerText : null;
     }
 
     private static object? GetMemberValue(object instance, string memberName)

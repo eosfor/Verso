@@ -184,4 +184,47 @@ public class ExecutionTests
             html.Contains("<td>PSQuickG</td><td>raph</td>", StringComparison.Ordinal),
             $"Did not expect split PSQuickGraph cells, got: {html}");
     }
+
+    [TestMethod]
+    public async Task ExplicitFormatTable_HideTableHeaders_DoesNotRenderHeaderRow()
+    {
+        var outputs = await _kernel.ExecuteAsync(
+            "@(" +
+            "[pscustomobject]@{ Name = 'PSGraphView'; Version = '0.1.0' }," +
+            "[pscustomobject]@{ Name = 'PSQuickGraph'; Version = '2.5.0' }" +
+            ") | Format-Table Name, Version -HideTableHeaders",
+            _context);
+
+        var htmlOutput = outputs.FirstOrDefault(o => o.MimeType == "text/html");
+        Assert.IsNotNull(htmlOutput, "Expected HTML output for explicit Format-Table.");
+
+        var html = htmlOutput.Content;
+        Assert.IsFalse(html.Contains("<thead>", StringComparison.OrdinalIgnoreCase), $"Did not expect thead for hidden headers, got: {html}");
+        Assert.IsFalse(html.Contains("<th>Name</th>"), $"Did not expect Name header when headers are hidden, got: {html}");
+        Assert.IsFalse(html.Contains("<th>Version</th>"), $"Did not expect Version header when headers are hidden, got: {html}");
+        Assert.IsTrue(html.Contains("<td>PSGraphView</td>"), $"Expected first row value, got: {html}");
+        Assert.IsTrue(html.Contains("<td>PSQuickGraph</td>"), $"Expected second row value, got: {html}");
+    }
+
+    [TestMethod]
+    public async Task ExplicitFormatTable_GroupBy_PreservesGroupHeaders()
+    {
+        var outputs = await _kernel.ExecuteAsync(
+            "@(" +
+            "[pscustomobject]@{ Category = 'Core'; Name = 'Alpha'; Version = '1.0.0' }," +
+            "[pscustomobject]@{ Category = 'Core'; Name = 'Beta'; Version = '1.1.0' }," +
+            "[pscustomobject]@{ Category = 'Extra'; Name = 'Gamma'; Version = '2.0.0' }" +
+            ") | Format-Table Name, Version -GroupBy Category",
+            _context);
+
+        var htmlOutput = outputs.FirstOrDefault(o => o.MimeType == "text/html");
+        Assert.IsNotNull(htmlOutput, "Expected HTML output for grouped explicit Format-Table.");
+
+        var html = htmlOutput.Content;
+        Assert.IsTrue(html.Contains("class=\"verso-ps-group\""), $"Expected group section rows, got: {html}");
+        Assert.IsTrue(html.Contains("Category: Core"), $"Expected Core group header, got: {html}");
+        Assert.IsTrue(html.Contains("Category: Extra"), $"Expected Extra group header, got: {html}");
+        Assert.IsTrue(html.Contains("<td>Alpha</td>"), $"Expected Alpha row, got: {html}");
+        Assert.IsTrue(html.Contains("<td>Gamma</td>"), $"Expected Gamma row, got: {html}");
+    }
 }
