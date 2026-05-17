@@ -498,7 +498,7 @@ function Display {
         }
 
         var headerText = sb.ToString().Trim();
-        return headerText.Length > 0 ? headerText : null;
+        return string.IsNullOrEmpty(headerText) ? null : headerText;
     }
 
     private static object? GetMemberValue(object instance, string memberName)
