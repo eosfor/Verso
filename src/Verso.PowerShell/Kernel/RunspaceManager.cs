@@ -1,6 +1,5 @@
 using System.Collections.ObjectModel;
 using System.Collections;
-using System.Globalization;
 using System.Management.Automation;
 using System.Management.Automation.Language;
 using System.Management.Automation.Runspaces;
@@ -389,7 +388,7 @@ function Display {
             if (columns.Count == 0) return null;
 
             var rows = new List<(string? GroupHeader, List<string>? Cells)>();
-            var objectCount = 0;
+            var dataRowCount = 0;
             foreach (var result in results)
             {
                 var baseObject = result?.BaseObject;
@@ -419,7 +418,7 @@ function Display {
                 if (row.Count > 0)
                 {
                     rows.Add((null, row));
-                    objectCount++;
+                    dataRowCount++;
                 }
             }
 
@@ -442,7 +441,7 @@ function Display {
                 if (row.GroupHeader is not null)
                 {
                     sb.Append("<tr class=\"verso-ps-group\"><td colspan=\"")
-                      .Append(columns.Count.ToString(CultureInfo.InvariantCulture))
+                      .Append(columns.Count.ToString())
                       .Append("\">")
                       .Append(WebUtility.HtmlEncode(row.GroupHeader))
                       .Append("</td></tr>");
@@ -463,7 +462,7 @@ function Display {
 
             sb.Append("</tbody></table>");
             sb.Append("<div class=\"verso-ps-footer\">")
-              .Append(objectCount.ToString("N0"))
+              .Append(dataRowCount.ToString("N0"))
               .Append(" object(s)</div>");
             sb.Append("</div>");
 
