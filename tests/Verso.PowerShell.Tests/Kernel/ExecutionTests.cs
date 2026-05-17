@@ -175,6 +175,8 @@ public class ExecutionTests
         Assert.IsTrue(html.Contains("<th>ModuleBase</th>"), $"Expected ModuleBase header, got: {html}");
         Assert.IsTrue(html.Contains("<td>PSGraphView</td>"), $"Expected full value PSGraphView in a single cell, got: {html}");
         Assert.IsTrue(html.Contains("<td>PSQuickGraph</td>"), $"Expected full value PSQuickGraph in a single cell, got: {html}");
+        Assert.IsTrue(html.Contains("<td>/Users/example/PSGraphView</td>"), $"Expected full ModuleBase path for PSGraphView, got: {html}");
+        Assert.IsTrue(html.Contains("<td>/Users/example/PSQuickGraph</td>"), $"Expected full ModuleBase path for PSQuickGraph, got: {html}");
         Assert.IsFalse(
             html.Contains("<td>PSGraphV</td><td>iew</td>", StringComparison.Ordinal),
             $"Did not expect split PSGraphView cells, got: {html}");

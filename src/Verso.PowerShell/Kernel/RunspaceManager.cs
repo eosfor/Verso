@@ -350,11 +350,11 @@ function Display {
                 .FirstOrDefault(baseObject => string.Equals(baseObject?.GetType().Name, "FormatStartData", StringComparison.Ordinal));
             if (formatStart is null) return null;
 
-            var shapeInfo = GetMemberValue(formatStart, "shapeInfo");
-            if (shapeInfo is null || !string.Equals(shapeInfo.GetType().Name, "TableHeaderInfo", StringComparison.Ordinal))
+            var tableHeaderInfo = GetMemberValue(formatStart, "shapeInfo");
+            if (tableHeaderInfo is null || !string.Equals(tableHeaderInfo.GetType().Name, "TableHeaderInfo", StringComparison.Ordinal))
                 return null;
 
-            if (GetMemberValue(shapeInfo, "tableColumnInfoList") is not IEnumerable columnInfos)
+            if (GetMemberValue(tableHeaderInfo, "tableColumnInfoList") is not IEnumerable columnInfos)
                 return null;
 
             var columns = new List<(string Header, bool RightAlign)>();
@@ -379,8 +379,8 @@ function Display {
                 if (!string.Equals(baseObject?.GetType().Name, "FormatEntryData", StringComparison.Ordinal))
                     continue;
 
-                var formatEntryInfo = baseObject is null ? null : GetMemberValue(baseObject, "formatEntryInfo");
-                var fieldList = formatEntryInfo is null ? null : GetMemberValue(formatEntryInfo, "formatPropertyFieldList") as IEnumerable;
+                var tableRowEntry = baseObject is null ? null : GetMemberValue(baseObject, "formatEntryInfo");
+                var fieldList = tableRowEntry is null ? null : GetMemberValue(tableRowEntry, "formatPropertyFieldList") as IEnumerable;
                 if (fieldList is null) continue;
 
                 var row = new List<string>();
