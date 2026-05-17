@@ -155,4 +155,31 @@ public class ExecutionTests
         Assert.IsTrue(allText.Contains("first"), $"Expected 'first', got: {allText}");
         Assert.IsTrue(allText.Contains("second"), $"Expected 'second', got: {allText}");
     }
+
+    [TestMethod]
+    public async Task ExplicitFormatTable_RendersWideValuesWithoutColumnSplitting()
+    {
+        var outputs = await _kernel.ExecuteAsync(
+            "@(" +
+            "[pscustomobject]@{ Name = 'PSGraphView'; Version = '0.1.0'; ModuleBase = '/Users/example/PSGraphView' }," +
+            "[pscustomobject]@{ Name = 'PSQuickGraph'; Version = '2.5.0'; ModuleBase = '/Users/example/PSQuickGraph' }" +
+            ") | Format-Table Name, Version, ModuleBase -AutoSize",
+            _context);
+
+        var htmlOutput = outputs.FirstOrDefault(o => o.MimeType == "text/html");
+        Assert.IsNotNull(htmlOutput, "Expected HTML output for explicit Format-Table.");
+
+        var html = htmlOutput.Content;
+        Assert.IsTrue(html.Contains("<th>Name</th>"), $"Expected Name header, got: {html}");
+        Assert.IsTrue(html.Contains("<th>Version</th>"), $"Expected Version header, got: {html}");
+        Assert.IsTrue(html.Contains("<th>ModuleBase</th>"), $"Expected ModuleBase header, got: {html}");
+        Assert.IsTrue(html.Contains("<td>PSGraphView</td>"), $"Expected full value PSGraphView in a single cell, got: {html}");
+        Assert.IsTrue(html.Contains("<td>PSQuickGraph</td>"), $"Expected full value PSQuickGraph in a single cell, got: {html}");
+        Assert.IsFalse(
+            html.Contains("<td>PSGraphV</td><td>iew</td>", StringComparison.Ordinal),
+            $"Did not expect split PSGraphView cells, got: {html}");
+        Assert.IsFalse(
+            html.Contains("<td>PSQuickG</td><td>raph</td>", StringComparison.Ordinal),
+            $"Did not expect split PSQuickGraph cells, got: {html}");
+    }
 }

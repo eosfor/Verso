@@ -1,8 +1,10 @@
 using System.Collections.ObjectModel;
+using System.Collections;
 using System.Management.Automation;
 using System.Management.Automation.Language;
 using System.Management.Automation.Runspaces;
 using System.Net;
+using System.Reflection;
 using System.Text;
 using Verso.Abstractions;
 
@@ -65,37 +67,43 @@ internal sealed class RunspaceManager : IDisposable
 
             if (results.Count > 0 && HasFormatObjects(results))
             {
-                // Explicit Format-Table / Format-List: render through Out-String
-                // then parse the text table into HTML for consistent display.
-                using var renderer = System.Management.Automation.PowerShell.Create();
-                renderer.Runspace = runspace;
-                renderer.AddCommand("Out-String").AddParameter("Width", 200);
-                var rendered = renderer.Invoke(results);
-                // Out-String returns a single multi-line string; split into individual lines.
-                var lines = rendered
-                    .SelectMany(r => (r?.ToString() ?? "").Split('\n'))
-                    .Select(s => s.TrimEnd())
-                    .Where(s => s.Length > 0)
-                    .ToList();
-                if (lines.Count > 0)
+                var tableHtml = TryRenderFormatTableToHtml(results);
+                if (tableHtml is not null)
                 {
-                    var html = ParseTextTableToHtml(lines);
-                    if (html is not null)
+                    outputLines.Add(tableHtml);
+                    outputMimeType = "text/html";
+                }
+                else
+                {
+                    // If metadata-based table rendering is unavailable, fall back to
+                    // Out-String text. Try the legacy text-table parser first, then <pre>.
+                    using var renderer = System.Management.Automation.PowerShell.Create();
+                    renderer.Runspace = runspace;
+                    renderer.AddCommand("Out-String").AddParameter("Width", 200);
+                    var rendered = renderer.Invoke(results);
+                    var lines = rendered
+                        .SelectMany(r => (r?.ToString() ?? "").Split('\n'))
+                        .Select(s => s.TrimEnd())
+                        .Where(s => s.Length > 0)
+                        .ToList();
+                    if (lines.Count > 0)
                     {
-                        outputLines.Add(html);
-                        outputMimeType = "text/html";
-                    }
-                    else
-                    {
-                        // Not a parseable table (e.g. Format-List) - wrap as styled <pre>
-                        var sb = new StringBuilder();
-                        AppendPreStyles(sb);
-                        sb.Append("<div class=\"verso-ps-result\">");
-                        sb.Append("<pre class=\"verso-ps-pre\">")
-                          .Append(WebUtility.HtmlEncode(string.Join(Environment.NewLine, lines)))
-                          .Append("</pre>");
-                        sb.Append("</div>");
-                        outputLines.Add(sb.ToString());
+                        var html = ParseTextTableToHtml(lines);
+                        if (html is not null)
+                        {
+                            outputLines.Add(html);
+                        }
+                        else
+                        {
+                            var sb = new StringBuilder();
+                            AppendPreStyles(sb);
+                            sb.Append("<div class=\"verso-ps-result\">");
+                            sb.Append("<pre class=\"verso-ps-pre\">")
+                              .Append(WebUtility.HtmlEncode(string.Join(Environment.NewLine, lines)))
+                              .Append("</pre>");
+                            sb.Append("</div>");
+                            outputLines.Add(sb.ToString());
+                        }
                         outputMimeType = "text/html";
                     }
                 }
@@ -331,6 +339,102 @@ function Display {
              targetToken.Extent.StartColumnNumber - 1,
              targetToken.Extent.EndLineNumber - 1,
              targetToken.Extent.EndColumnNumber - 1));
+    }
+
+    private static string? TryRenderFormatTableToHtml(Collection<PSObject> results)
+    {
+        var formatStart = results
+            .Select(r => r?.BaseObject)
+            .FirstOrDefault(baseObject => string.Equals(baseObject?.GetType().Name, "FormatStartData", StringComparison.Ordinal));
+        if (formatStart is null) return null;
+
+        var shapeInfo = GetMemberValue(formatStart, "shapeInfo");
+        if (shapeInfo is null || !string.Equals(shapeInfo.GetType().Name, "TableHeaderInfo", StringComparison.Ordinal))
+            return null;
+
+        if (GetMemberValue(shapeInfo, "tableColumnInfoList") is not IEnumerable columnInfos)
+            return null;
+
+        var columns = new List<(string Header, bool RightAlign)>();
+        foreach (var columnInfo in columnInfos)
+        {
+            if (columnInfo is null) continue;
+            var label = (GetMemberValue(columnInfo, "label")?.ToString() ?? string.Empty).Trim();
+            if (string.IsNullOrEmpty(label))
+                label = (GetMemberValue(columnInfo, "propertyName")?.ToString() ?? string.Empty).Trim();
+
+            var alignment = GetMemberValue(columnInfo, "alignment")?.ToString();
+            var rightAlign = string.Equals(alignment, "Right", StringComparison.OrdinalIgnoreCase);
+            columns.Add((label, rightAlign));
+        }
+
+        if (columns.Count == 0) return null;
+
+        var rows = new List<List<string>>();
+        foreach (var result in results)
+        {
+            var baseObject = result?.BaseObject;
+            if (!string.Equals(baseObject?.GetType().Name, "FormatEntryData", StringComparison.Ordinal))
+                continue;
+
+            var formatEntryInfo = baseObject is null ? null : GetMemberValue(baseObject, "formatEntryInfo");
+            var fieldList = formatEntryInfo is null ? null : GetMemberValue(formatEntryInfo, "formatPropertyFieldList") as IEnumerable;
+            if (fieldList is null) continue;
+
+            var row = new List<string>();
+            foreach (var field in fieldList)
+            {
+                var text = field is null ? string.Empty : GetMemberValue(field, "propertyValue")?.ToString() ?? string.Empty;
+                row.Add(text);
+            }
+
+            if (row.Count > 0)
+                rows.Add(row);
+        }
+
+        var sb = new StringBuilder();
+        AppendTableStyles(sb);
+        sb.Append("<div class=\"verso-ps-result\">");
+        sb.Append("<table><thead><tr>");
+        foreach (var column in columns)
+            sb.Append("<th>").Append(WebUtility.HtmlEncode(column.Header)).Append("</th>");
+        sb.Append("</tr></thead><tbody>");
+
+        foreach (var row in rows)
+        {
+            sb.Append("<tr>");
+            for (var i = 0; i < columns.Count; i++)
+            {
+                sb.Append(columns[i].RightAlign ? "<td style=\"text-align:right;\">" : "<td>");
+                var cellValue = i < row.Count ? row[i] : string.Empty;
+                sb.Append(WebUtility.HtmlEncode(cellValue));
+                sb.Append("</td>");
+            }
+            sb.Append("</tr>");
+        }
+
+        sb.Append("</tbody></table>");
+        sb.Append("<div class=\"verso-ps-footer\">")
+          .Append(rows.Count.ToString("N0"))
+          .Append(" object(s)</div>");
+        sb.Append("</div>");
+
+        return sb.ToString();
+    }
+
+    private static object? GetMemberValue(object instance, string memberName)
+    {
+        const BindingFlags flags = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.IgnoreCase;
+        var type = instance.GetType();
+        var property = type.GetProperty(memberName, flags);
+        if (property is not null)
+            return property.GetValue(instance);
+
+        var field = type.GetField(memberName, flags);
+        if (field is not null)
+            return field.GetValue(instance);
+
+        return null;
     }
 
     /// <summary>
