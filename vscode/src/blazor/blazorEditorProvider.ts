@@ -123,7 +123,7 @@ export class BlazorEditorProvider
 
     webview.options = {
       enableScripts: true,
-      localResourceRoots: [this.context.extensionUri, this.getWasmRoot()],
+      localResourceRoots: [this.getWasmRoot()],
     };
 
     // Set the webview HTML loading the WASM app
