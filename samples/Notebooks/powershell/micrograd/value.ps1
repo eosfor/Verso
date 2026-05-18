@@ -1,12 +1,3 @@
-class Operation {
-    [string]$label
-
-    Operation([string]$op){
-        $this.label = $op
-    }
-
-}
-
 class Value {
     hidden [double]$data
     hidden [string]$label=""
@@ -35,7 +26,7 @@ class Value {
         $this.operation = $operation
     }
 
-    Value([double] $data, [string] $label, [array] $children, [string] $operation){
+    Value([double] $data, [array] $children, [string] $operation, [string] $label){
         $this.data = $data
         $this.label = $label
         $this.children = $children
@@ -43,7 +34,7 @@ class Value {
     }
 
     static [Value] op_Addition([Value]$left, [Value]$right) {
-        $out = [Value]::new($left.data + $right.data, @($left, $right), "+")
+        $out = [Value]::new($left.data + $right.data, @($left, $right), "+", "+_res")
 
         $out.backward = {
             $left.grad += 1 * $out.grad
@@ -53,8 +44,19 @@ class Value {
         return $out
     }
 
+    static [Value] op_Subtraction([Value]$left, [Value]$right) {
+        $out = [Value]::new($left.data - $right.data, @($left, $right), "-", "-_res")
+
+        $out.backward = {
+            $left.grad += 1 * $out.grad
+            $right.grad += -1 * $out.grad
+        }.GetNewClosure()
+
+        return $out
+    }
+
     static [Value] op_Multiply([Value]$left, [Value]$right) {
-        $out = [Value]::new($left.data * $right.data, @($left, $right), "*")
+        $out = [Value]::new($left.data * $right.data, @($left, $right), "*", "*_res")
 
         $out.backward = {
             $left.grad += $right.data * $out.grad

@@ -1,7 +1,7 @@
 {
   "verso": "1.0",
   "metadata": {
-    "title": "PSGraph and PSGraphView from PowerShell Gallery",
+    "title": "Micrograd in PowerShell with PSGraph",
     "created": "2026-05-10T00:00:00+00:00",
     "modified": "2026-05-10T00:00:00+00:00",
     "defaultKernel": "powershell",
@@ -10,122 +10,185 @@
   },
   "cells": [
     {
-      "id": "b8bb92ff-a510-4a55-9e7b-3e53d62f3201",
+      "id": "c10006aa-7486-4e47-9a94-dc4762c8982e",
       "type": "markdown",
-      "source": "# PSGraph and PSGraphView from PowerShell Gallery\n\nThis notebook installs the graph modules into the current user PowerShell module path, builds a graph with PSGraph, and renders it with PSGraphView.\n\nThe current PowerShell Gallery package for the PSGraph graph/algorithm module is \u0060PSQuickGraph\u0060. \u0060PSGraphView\u0060 provides the rendering cmdlets and is currently published as a prerelease package."
+      "source": "# Micrograd in PowerShell with PSGraph\n\nThis notebook builds a small automatic differentiation engine in PowerShell, renders its computation graphs with PSGraph/PSGraphView, and trains a tiny MLP on the classic micrograd toy dataset.",
+      "outputs": []
     },
     {
-      "id": "dd69032d-556c-4195-a6b7-3551c61b1c10",
+      "id": "10897b83-f777-43a3-a85c-d5719da8dd1d",
+      "type": "markdown",
+      "source": "## Module Setup\n\nUse the local setup cell for repository testing; it imports module manifests from this workspace's `PSGraph/artifacts/local-modules` folder. Use the installed setup cell in a fresh kernel when `PSQuickGraph` and `PSGraphView` are already installed in the normal PowerShell module path.\n\nPowerShell binary modules load .NET assemblies into the runspace process. If one copy of `PSGraph.dll` is already loaded, restart the kernel before switching between local and installed module sources.",
+      "outputs": []
+    },
+    {
+      "id": "ff7f6f07-7f73-4baa-947c-bb0b3712a056",
       "type": "code",
       "language": "powershell",
-      "source": "$ErrorActionPreference = \u0027Stop\u0027\n\nImport-Module PSQuickGraph -Force\nImport-Module PSGraphView -Force\n\nGet-Module PSQuickGraph, PSGraphView |\n    Select-Object Name, Version, ModuleBase |\n    Format-Table -AutoSize",
+      "source": "$ErrorActionPreference = 'Stop'\n\n$loadedPSGraphAssembly = [AppDomain]::CurrentDomain.GetAssemblies() |\n    Where-Object { $_.GetName().Name -eq 'PSGraph' } |\n    Select-Object -First 1\n\nif ($loadedPSGraphAssembly) {\n    Write-Warning 'PSGraph.dll is already loaded. Restart the kernel before switching module sources.'\n    Get-Module PSQuickGraph, PSGraphView | Select-Object Name, Version, ModuleBase\n}\nelse {\n    $workspaceRoot = Resolve-Path (Join-Path (Get-Location) '../../../../..')\n    $repoRoot = Join-Path $workspaceRoot 'PSGraph'\n\n    $psQuickGraphManifest = Join-Path $repoRoot 'artifacts/local-modules/PSQuickGraph/PSQuickGraph.psd1'\n    $psGraphViewManifest = Join-Path $repoRoot 'artifacts/local-modules/PSGraphView/PSGraphView.psd1'\n\n    if (-not (Test-Path -LiteralPath $psQuickGraphManifest)) {\n        throw \"PSQuickGraph local manifest not found: $psQuickGraphManifest\"\n    }\n\n    if (-not (Test-Path -LiteralPath $psGraphViewManifest)) {\n        throw \"PSGraphView local manifest not found: $psGraphViewManifest\"\n    }\n\n    Remove-Module PSQuickGraph, PSGraphView -ErrorAction SilentlyContinue\n    Import-Module $psQuickGraphManifest -Force\n    Import-Module $psGraphViewManifest -Force\n\n    Get-Module PSQuickGraph, PSGraphView |\n        Select-Object Name, Version, ModuleBase\n}",
       "metadata": {
         "verso:ui.inputCollapsed": true
-      }
+      },
+      "outputs": []
     },
     {
-      "id": "8dd36324-5e2b-41ee-a35f-1d45f32315e0",
+      "id": "92379945-af96-4131-a373-7f8fc66bcc7e",
       "type": "code",
       "language": "powershell",
-      "source": "$ErrorActionPreference = \u0027Stop\u0027\n\n$repoRoot = \u0027/Users/andrei/repo/PSGraphViewProj/PSGraph\u0027\n\n$psQuickGraphManifest = Join-Path $repoRoot \u0027artifacts/local-modules/PSQuickGraph/PSQuickGraph.psd1\u0027\n$psGraphViewManifest = Join-Path $repoRoot \u0027artifacts/local-modules/PSGraphView/PSGraphView.psd1\u0027\n\nif (-not (Test-Path -LiteralPath $psQuickGraphManifest)) {\n    throw \u0022PSQuickGraph local manifest not found: $psQuickGraphManifest\u0022\n}\n\nif (-not (Test-Path -LiteralPath $psGraphViewManifest)) {\n    throw \u0022PSGraphView local manifest not found: $psGraphViewManifest\u0022\n}\n\nRemove-Module PSQuickGraph, PSGraphView -ErrorAction SilentlyContinue\n\nImport-Module $psQuickGraphManifest -Force\nImport-Module $psGraphViewManifest -Force\n\nGet-Module PSQuickGraph, PSGraphView |\n    Select-Object Name, Version, ModuleBase |\n    Format-Table -AutoSize\n",
-      "outputs": [
-        {
-          "mimeType": "text/html",
-          "content": "\u003Cstyle\u003E.verso-ps-result{--ps-bg:var(--vscode-editor-background,var(--verso-cell-output-background,#fff));--ps-fg:var(--vscode-editor-foreground,var(--verso-cell-output-foreground,#1e1e1e));--ps-border:var(--vscode-editorWidget-border,var(--verso-border-default,#e0e0e0));--ps-header-bg:var(--vscode-editorWidget-background,var(--verso-cell-background,#f5f5f5));--ps-hover:var(--vscode-list-hoverBackground,var(--verso-cell-hover-background,#f0f0f0));--ps-muted:var(--vscode-descriptionForeground,var(--verso-editor-line-number,#858585));font-family:var(--verso-code-output-font-family,monospace);font-size:13px;color:var(--ps-fg);}.verso-ps-result table{border-collapse:collapse;width:auto;background:var(--ps-bg);color:var(--ps-fg);}.verso-ps-result th{text-align:left;padding:6px 12px;border-bottom:2px solid var(--ps-border);background:var(--ps-header-bg);font-weight:600;}.verso-ps-result td{padding:5px 12px;border-bottom:1px solid var(--ps-border);}.verso-ps-result tbody tr:hover{background:var(--ps-hover);}.verso-ps-result .verso-ps-null{color:var(--ps-muted);font-style:italic;}.verso-ps-result .verso-ps-footer{padding:6px 0;color:var(--ps-muted);font-size:12px;}\u003C/style\u003E\u003Cdiv class=\u0022verso-ps-result\u0022\u003E\u003Ctable\u003E\u003Cthead\u003E\u003Ctr\u003E\u003Cth\u003EName\u003C/th\u003E\u003Cth\u003EVersion\u003C/th\u003E\u003Cth\u003EModuleBase\u003C/th\u003E\u003C/tr\u003E\u003C/thead\u003E\u003Ctbody\u003E\u003Ctr\u003E\u003Ctd\u003EPSGraphV\u003C/td\u003E\u003Ctd\u003Eiew  0.1.0\u003C/td\u003E\u003Ctd\u003E/Users/andrei/repo/PSGraphViewProj/PSGraph/artifacts/local-modules/PSGraphView\u003C/td\u003E\u003C/tr\u003E\u003Ctr\u003E\u003Ctd\u003EPSQuickG\u003C/td\u003E\u003Ctd\u003Eraph 2.5.0\u003C/td\u003E\u003Ctd\u003E/Users/andrei/repo/PSGraphViewProj/PSGraph/artifacts/local-modules/PSQuickGraph\u003C/td\u003E\u003C/tr\u003E\u003C/tbody\u003E\u003C/table\u003E\u003Cdiv class=\u0022verso-ps-footer\u0022\u003E2 object(s)\u003C/div\u003E\u003C/div\u003E"
-        }
-      ],
-      "metadata": {
-        "verso:ui.inputCollapsed": true
-      }
+      "source": "$ErrorActionPreference = 'Stop'\n\n$loadedPSGraphAssembly = [AppDomain]::CurrentDomain.GetAssemblies() |\n    Where-Object { $_.GetName().Name -eq 'PSGraph' } |\n    Select-Object -First 1\n\nif ($loadedPSGraphAssembly) {\n    Write-Warning 'PSGraph.dll is already loaded. Restart the kernel before switching module sources.'\n    Get-Module PSQuickGraph, PSGraphView | Select-Object Name, Version, ModuleBase\n}\nelse {\n    Remove-Module PSQuickGraph, PSGraphView -ErrorAction SilentlyContinue\n    Import-Module PSQuickGraph -Force\n    Import-Module PSGraphView -Force\n\n    Get-Module PSQuickGraph, PSGraphView |\n        Select-Object Name, Version, ModuleBase\n}",
+      "outputs": []
     },
     {
-      "id": "0694ae22-0e82-44df-88df-c98b8ce8bb6a",
+      "id": "bfc628a3-515c-4905-9458-6246caa81b2e",
       "type": "markdown",
-      "source": "## Micrograd"
+      "source": "## Helpers\n\nThe implementation is split into small scripts:\n\n- `value.ps1` defines scalar `Value` objects and operator overloads.\n- `graphHelper.ps1` converts `Value` graphs into PSGraph graphs and renders them.\n- `neuronHelper.ps1` defines `Neuron`, `Layer`, and `MLP`.\n- `helpers.ps1` contains small collection helpers such as `Zip` and `Sum-Value`.",
+      "outputs": []
     },
     {
-      "id": "118187ff-f95f-48e6-845f-2534bbb6569d",
+      "id": "afb60472-57bb-4182-9a12-1340020a4070",
       "type": "code",
       "language": "powershell",
-      "source": ". ././value.ps1"
+      "source": ". ./value.ps1\n. ./graphHelper.ps1\n. ./neuronHelper.ps1\n. ./helpers.ps1",
+      "outputs": []
     },
     {
-      "id": "13c5534d-3c1e-4c19-b66a-b0986a4e235a",
-      "type": "code",
-      "language": "powershell",
-      "source": "$a = [Value]::new( 2.0, \u0027a\u0027)\n$b = [Value]::new(-3.0, \u0027b\u0027)\n$c = [Value]::new(10.0, \u0027c\u0027)\n$e = $a * $b; $e.label = \u0027e\u0027\n$d = $e \u002B $c; $d.label = \u0027d\u0027\n$f = [Value]::new(-2.0, \u0027f\u0027)"
+      "id": "0f742849-64b1-49d9-b4e0-56f96ac103ee",
+      "type": "markdown",
+      "source": "## Scalar Computation Graph\n\nStart with a single scalar expression. `Value` objects remember their children and the operation that produced them, so PSGraph can render the expression tree.",
+      "outputs": []
     },
     {
-      "id": "a0ac39f8-4c29-4d1b-8c45-554019af3343",
+      "id": "59e70eeb-26b8-445f-9e86-690798dee592",
       "type": "code",
       "language": "powershell",
-      "source": "$L = $d * $f; $L.label = \u0027L\u0027\n$L"
+      "source": "$a = [Value]::new( 2.0, 'a')\n$b = [Value]::new(-3.0, 'b')\n$c = [Value]::new(10.0, 'c')\n$e = $a * $b; $e.label = 'e'\n$d = $e + $c; $d.label = 'd'\n$f = [Value]::new(-2.0, 'f')\n$L = $d * $f; $L.label = 'L'\n\n$L",
+      "outputs": []
     },
     {
-      "id": "0544f5fc-3778-4b07-b6d1-c24da216ce6a",
+      "id": "165cdfec-dfcb-4aa5-82a0-95f6f5a36cf5",
       "type": "code",
       "language": "powershell",
-      "source": "function New-ValueNode([Value]$value) {\n    [pscustomobject]@{\n        kind  = \u0027value\u0027\n        value = $value\n        label = $value.label\n        data  = $value.data\n        grad = $value.grad\n    }\n}\n\nfunction New-OperationNode([Value]$value) {\n    [pscustomobject]@{\n        kind      = \u0027op\u0027\n        value     = $value\n        label     = $value.operation\n        operation = $value.operation\n        data      = $value.data\n    }\n}\n\n\nfunction New-ExpressionGraph {\n    param(\n        [Value]$val,\n        $graph = $null,\n        [hashtable]$valueVertices = $null,\n        [hashtable]$operationVertices = $null\n    )\n\n    if ($null -eq $graph) {\n        $graph = New-Graph -UseNonUniqueLabels\n    }\n\n    if ($null -eq $valueVertices) {\n        $valueVertices = @{}\n    }\n\n    if ($null -eq $operationVertices) {\n        $operationVertices = @{}\n    }\n\n    if (-not $valueVertices.ContainsKey($val)) {\n        $valueVertices[$val] = Add-Vertex -Graph $graph -Vertex (New-ValueNode $val) -PassThru\n    }\n\n    $valueVertex = $valueVertices[$val]\n\n    if ($val.operation) {\n        if (-not $operationVertices.ContainsKey($val)) {\n            $operationVertices[$val] = Add-Vertex -Graph $graph -Vertex (New-OperationNode $val) -PassThru\n        }\n\n        $operationVertex = $operationVertices[$val]\n\n        Add-Edge -From $operationVertex -To $valueVertex -Graph $graph | Out-Null\n    }\n\n\n    if ($val.children) {\n        foreach ($child in $val.children) {\n            New-ExpressionGraph \u0060\n                -val $child \u0060\n                -graph $graph \u0060\n                -valueVertices $valueVertices \u0060\n                -operationVertices $operationVertices | Out-Null\n\n            $childVertex = $valueVertices[$child]\n\n            if ($val.operation) {\n                Add-Edge -From $childVertex -To $operationVertex -Graph $graph | Out-Null\n            }\n        }\n    }\n\n    return $graph\n}\n"
+      "source": "$scalarGraph = New-ExpressionGraph -val $L\nShow-ExpressionGraph -Graph $scalarGraph",
+      "outputs": []
     },
     {
-      "id": "a6f4b309-a4a4-4b36-8bf2-1ea4b5effeb7",
-      "type": "code",
-      "language": "powershell",
-      "source": "$g = New-Graph -UseNonUniqueLabels\n$g2 = New-ExpressionGraph -val $L -graph $g"
+      "id": "bf07b38b-5459-4349-afb2-1f1075d28ae4",
+      "type": "markdown",
+      "source": "## Backpropagation Order\n\nFor backpropagation, build a graph directly on the original `Value` objects. A reverse topological order visits the output first and then walks back toward the leaves. After gradients are computed, rebuild the visualization graph because display nodes store a snapshot of `data` and `grad`.",
+      "outputs": []
     },
     {
-      "id": "8ea59ad0-cf4a-43b8-93f6-07da1eae15e4",
+      "id": "f69fa599-97c7-4854-aed5-759f23a27e42",
       "type": "code",
       "language": "powershell",
-      "source": "$vs = {\n    $node = $_\n\n    if ($node.kind -eq \u0027op\u0027) {\n        @{\n            shape = \u0027Ellipse\u0027\n            label = $node.label\n        }\n    }\n    else {\n        $name = if ($node.label) { $node.label } else { \u0027\u0027 }\n\n        @{\n            shape = \u0027Record\u0027\n            label = \u0022{ $name | data $($node.data) | grad $($node.grad) }\u0022\n        }\n    }\n}\n\n\n$dot = Export-Graph -Graph $g2 -Format Graphviz -GraphScript { @{ rankdir = \u0027LR\u0027; label = \u0027Micrograd\u0027 } } -VertexScript $vs\n$svg = Export-GraphvizView -InputObject $dot -Renderer Dot -As Svg\nDisplay $svg \u0027image/svg\u002Bxml\u0027"
+      "source": "$bpGraph = New-BackpropagationGraph -val $L\n$L.grad = 1.0\n\nGet-GraphTopologicalSort -Graph $bpGraph -Reverse |\n    ForEach-Object { $_.OriginalObject } |\n    ForEach-Object { & $_.backward }\n\n$scalarGraph = New-ExpressionGraph -val $L\nShow-ExpressionGraph -Graph $scalarGraph",
+      "outputs": []
     },
     {
-      "id": "c122b600-7573-4b00-8bbd-feee3c8fea65",
-      "type": "code",
-      "language": "powershell",
-      "source": "$L.grad = 1"
+      "id": "ff725818-b4dc-4a90-9069-f4cdfb97a9cc",
+      "type": "markdown",
+      "source": "## A Single Neuron\n\nThis reproduces the micrograd neuron example: two inputs, two weights, a bias, and a `tanh` activation.",
+      "outputs": []
     },
     {
-      "id": "85d5b2ca-1a79-4276-af29-01986381d94e",
+      "id": "c18a9b52-1521-4b07-b805-14916f55e772",
       "type": "code",
       "language": "powershell",
-      "source": "\u0026 $L.backward\n\u0026 $d.backward\n\u0026 $e.backward\n"
+      "source": "$x1 = [Value]::new(2.0, 'x1')\n$x2 = [Value]::new(0.0, 'x2')\n\n$w1 = [Value]::new(-3.0, 'w1')\n$w2 = [Value]::new(1.0, 'w2')\n$b = [Value]::new(6.8813735870195432, 'b')\n\n$x1w1 = $x1 * $w1; $x1w1.label = 'x1*w1'\n$x2w2 = $x2 * $w2; $x2w2.label = 'x2*w2'\n$x1w1x2w2 = $x1w1 + $x2w2; $x1w1x2w2.label = 'x1*w1 + x2*w2'\n$n = $x1w1x2w2 + $b; $n.label = 'n'\n$o = $n.Tanh(); $o.label = 'o'\n\n$o",
+      "outputs": []
     },
     {
-      "id": "e188ad23-1751-46b7-b5e7-592dd95770b7",
+      "id": "77fe7876-a35a-4057-aab9-3754dc02e7ad",
       "type": "code",
       "language": "powershell",
-      "source": "$a.data \u002B= 0.001 * $a.grad\n$b.data \u002B= 0.001 * $b.grad\n$c.data \u002B= 0.001 * $c.grad\n$f.data \u002B= 0.001 * $f.grad\n\n$e = $a * $b; $e.label = \u0027e\u0027\n$d = $e \u002B $c; $d.label = \u0027d\u0027 \n$L = $d * $f; $L.label = \u0027L\u0027 "
+      "source": "$neuronGraph = New-ExpressionGraph -val $o\nShow-ExpressionGraph -Graph $neuronGraph",
+      "outputs": []
     },
     {
-      "id": "3d6c8564-1a87-4cd0-8cbf-5be2c5eb1cb8",
+      "id": "9b440bcc-ed1f-4ca9-aaa9-cc58c167ef2f",
       "type": "code",
       "language": "powershell",
-      "source": "# inputs x1,x2\n$x1 = [Value]::new(2.0, \u0027x1\u0027)\n$x2 = [Value]::new(0.0, \u0027x2\u0027)\n\n# weights w1,w2\n$w1 = [Value]::new(-3.0, \u0027w1\u0027)\n$w2 = [Value]::new(1.0, \u0027w2\u0027)\n\n# bias of the neuron\n$b = [Value]::new(6.8813735870195432, \u0027b\u0027)\n\n# x1*w1 \u002B x2*w2 \u002B b\n$x1w1 = $x1 * $w1; $x1w1.label = \u0027x1*w1\u0027\n$x2w2 = $x2 * $w2; $x2w2.label = \u0027x2*w2\u0027\n$x1w1x2w2 = $x1w1 \u002B $x2w2; $x1w1x2w2.label = \u0027x1*w1 \u002B x2*w2\u0027\n$n = $x1w1x2w2 \u002B $b; $n.label = \u0027n\u0027\n$o = $n.Tanh(); $o.label = \u0027o\u0027\n\n$o",
-      "outputs": [
-        {
-          "mimeType": "text/html",
-          "content": "\n0.707106781186548"
-        }
-      ]
+      "source": "$bpNeuronGraph = New-BackpropagationGraph -val $o\n$o.grad = 1.0\n\nGet-GraphTopologicalSort -Graph $bpNeuronGraph -Reverse |\n    ForEach-Object { $_.OriginalObject } |\n    ForEach-Object { & $_.backward }\n\n$neuronGraph = New-ExpressionGraph -val $o\nShow-ExpressionGraph -Graph $neuronGraph",
+      "outputs": []
     },
     {
-      "id": "8eeaab0b-f3b2-4d00-882f-57bbb4db9769",
-      "type": "code",
-      "language": "powershell",
-      "source": "$g3 = New-Graph -UseNonUniqueLabels\n$g4 = New-ExpressionGraph -val $o -graph $g3"
+      "id": "4ebbd3b8-148d-464d-af32-ba7b042e129d",
+      "type": "markdown",
+      "source": "## Layer and MLP\n\nA `Layer` applies several neurons to the same input vector. An `MLP` chains layers so each layer receives the output vector from the previous layer.",
+      "outputs": []
     },
     {
-      "id": "70f3027f-6573-40b6-814b-c01ebe4b41a4",
+      "id": "a158633b-33d6-45c0-af8f-46e135c1eff3",
       "type": "code",
       "language": "powershell",
-      "source": "$vs = {\n    $node = $_\n\n    if ($node.kind -eq \u0027op\u0027) {\n        @{\n            shape = \u0027Ellipse\u0027\n            label = $node.label\n        }\n    }\n    else {\n        $name = if ($node.label) { $node.label } else { \u0027\u0027 }\n\n        @{\n            shape = \u0027Record\u0027\n            label = \u0022{ $name | data $($node.data) | grad $($node.grad) }\u0022\n        }\n    }\n}\n\n\n$dot = Export-Graph -Graph $g4 -Format Graphviz -GraphScript { @{ rankdir = \u0027LR\u0027; label = \u0027Micrograd\u0027 } } -VertexScript $vs\n$svg = Export-GraphvizView -InputObject $dot -Renderer Dot -As Svg\nDisplay $svg \u0027image/svg\u002Bxml\u0027",
-      "outputs": [
-        {
-          "mimeType": "image/svg\u002Bxml",
-          "content": "\u003Csvg xmlns=\u0022http://www.w3.org/2000/svg\u0022 version=\u00221.1\u0022 width=\u00221472.2\u0022 height=\u0022226.5\u0022 viewBox=\u00220 0 1472.2 226.5\u0022\u003E\u003Cg data-kind=\u0022graph\u0022 data-name=\u0022G\u0022\u003E\u003Cpolygon points=\u00220,226.5 0,0 1472.25,0 1472.25,226.5\u0022 stroke=\u0022#fffffe\u0022 stroke-opacity=\u00220\u0022 fill=\u0022#ffffff\u0022 stroke-width=\u00221\u0022 /\u003E\u003Ctext x=\u0022736.12\u0022 y=\u0022219.3\u0022 font-family=\u0022Times-Roman\u0022 font-size=\u002214\u0022 text-anchor=\u0022middle\u0022 fill=\u0022#000000\u0022\u003EMicrograd\u003C/text\u003E\u003Cg data-kind=\u0022node\u0022 data-name=\u00220\u0022\u003E\u003Cpolygon points=\u00221245,147.5 1245,111.5 1472.25,111.5 1472.25,147.5\u0022 stroke=\u0022#000000\u0022 fill=\u0022none\u0022 stroke-width=\u00221\u0022 /\u003E\u003Cpolyline points=\u00221267.75,147 1267.75,111.5\u0022 stroke=\u0022#000000\u0022 fill=\u0022none\u0022 stroke-width=\u00221\u0022 /\u003E\u003Cpolyline points=\u00221421.75,147 1421.75,111.5\u0022 stroke=\u0022#000000\u0022 fill=\u0022none\u0022 stroke-width=\u00221\u0022 /\u003E\u003Ctext x=\u00221256.38\u0022 y=\u0022134.3\u0022 font-family=\u0022Times-Roman\u0022 font-size=\u002214\u0022 text-anchor=\u0022middle\u0022 fill=\u0022#000000\u0022\u003Eo\u003C/text\u003E\u003Ctext x=\u00221344.75\u0022 y=\u0022134.3\u0022 font-family=\u0022Times-Roman\u0022 font-size=\u002214\u0022 text-anchor=\u0022middle\u0022 fill=\u0022#000000\u0022\u003Edata 0.707106781186548\u003C/text\u003E\u003Ctext x=\u00221447\u0022 y=\u0022134.3\u0022 font-family=\u0022Times-Roman\u0022 font-size=\u002214\u0022 text-anchor=\u0022middle\u0022 fill=\u0022#000000\u0022\u003Egrad 0\u003C/text\u003E\u003C/g\u003E\u003Cg data-kind=\u0022node\u0022 data-name=\u00221\u0022\u003E\u003Cellipse cx=\u00221182\u0022 cy=\u0022129.5\u0022 rx=\u002227\u0022 ry=\u002218\u0022 stroke=\u0022#000000\u0022 fill=\u0022none\u0022 stroke-width=\u00221\u0022 /\u003E\u003Ctext x=\u00221182\u0022 y=\u0022134.55\u0022 font-family=\u0022Times-Roman\u0022 font-size=\u002214\u0022 text-anchor=\u0022middle\u0022 fill=\u0022#000000\u0022\u003Etanh\u003C/text\u003E\u003C/g\u003E\u003Cg data-kind=\u0022node\u0022 data-name=\u00222\u0022\u003E\u003Cpolygon points=\u0022891.75,147.5 891.75,111.5 1119,111.5 1119,147.5\u0022 stroke=\u0022#000000\u0022 fill=\u0022none\u0022 stroke-width=\u00221\u0022 /\u003E\u003Cpolyline points=\u0022914.5,147 914.5,111.5\u0022 stroke=\u0022#000000\u0022 fill=\u0022none\u0022 stroke-width=\u00221\u0022 /\u003E\u003Cpolyline points=\u00221068.5,147 1068.5,111.5\u0022 stroke=\u0022#000000\u0022 fill=\u0022none\u0022 stroke-width=\u00221\u0022 /\u003E\u003Ctext x=\u0022903.12\u0022 y=\u0022134.3\u0022 font-family=\u0022Times-Roman\u0022 font-size=\u002214\u0022 text-anchor=\u0022middle\u0022 fill=\u0022#000000\u0022\u003En\u003C/text\u003E\u003Ctext x=\u0022991.5\u0022 y=\u0022134.3\u0022 font-family=\u0022Times-Roman\u0022 font-size=\u002214\u0022 text-anchor=\u0022middle\u0022 fill=\u0022#000000\u0022\u003Edata 0.881373587019543\u003C/text\u003E\u003Ctext x=\u00221093.75\u0022 y=\u0022134.3\u0022 font-family=\u0022Times-Roman\u0022 font-size=\u002214\u0022 text-anchor=\u0022middle\u0022 fill=\u0022#000000\u0022\u003Egrad 0\u003C/text\u003E\u003C/g\u003E\u003Cg data-kind=\u0022node\u0022 data-name=\u00223\u0022\u003E\u003Cellipse cx=\u0022828.75\u0022 cy=\u0022129.5\u0022 rx=\u002227\u0022 ry=\u002218\u0022 stroke=\u0022#000000\u0022 fill=\u0022none\u0022 stroke-width=\u00221\u0022 /\u003E\u003Ctext x=\u0022828.75\u0022 y=\u0022134.55\u0022 font-family=\u0022Times-Roman\u0022 font-size=\u002214\u0022 text-anchor=\u0022middle\u0022 fill=\u0022#000000\u0022\u003E\u002B\u003C/text\u003E\u003C/g\u003E\u003Cg data-kind=\u0022node\u0022 data-name=\u00224\u0022\u003E\u003Cpolygon points=\u0022550.88,119.5 550.88,83.5 760.12,83.5 760.12,119.5\u0022 stroke=\u0022#000000\u0022 fill=\u0022none\u0022 stroke-width=\u00221\u0022 /\u003E\u003Cpolyline points=\u0022656.12,119 656.12,83.5\u0022 stroke=\u0022#000000\u0022 fill=\u0022none\u0022 stroke-width=\u00221\u0022 /\u003E\u003Cpolyline points=\u0022709.62,119 709.62,83.5\u0022 stroke=\u0022#000000\u0022 fill=\u0022none\u0022 stroke-width=\u00221\u0022 /\u003E\u003Ctext x=\u0022603.5\u0022 y=\u0022106.3\u0022 font-family=\u0022Times-Roman\u0022 font-size=\u002214\u0022 text-anchor=\u0022middle\u0022 fill=\u0022#000000\u0022\u003Ex1*w1 \u002B x2*w2\u003C/text\u003E\u003Ctext x=\u0022682.88\u0022 y=\u0022106.3\u0022 font-family=\u0022Times-Roman\u0022 font-size=\u002214\u0022 text-anchor=\u0022middle\u0022 fill=\u0022#000000\u0022\u003Edata -6\u003C/text\u003E\u003Ctext x=\u0022734.88\u0022 y=\u0022106.3\u0022 font-family=\u0022Times-Roman\u0022 font-size=\u002214\u0022 text-anchor=\u0022middle\u0022 fill=\u0022#000000\u0022\u003Egrad 0\u003C/text\u003E\u003C/g\u003E\u003Cg data-kind=\u0022node\u0022 data-name=\u00225\u0022\u003E\u003Cellipse cx=\u0022482.25\u0022 cy=\u0022101.5\u0022 rx=\u002227\u0022 ry=\u002218\u0022 stroke=\u0022#000000\u0022 fill=\u0022none\u0022 stroke-width=\u00221\u0022 /\u003E\u003Ctext x=\u0022482.25\u0022 y=\u0022106.55\u0022 font-family=\u0022Times-Roman\u0022 font-size=\u002214\u0022 text-anchor=\u0022middle\u0022 fill=\u0022#000000\u0022\u003E\u002B\u003C/text\u003E\u003C/g\u003E\u003Cg data-kind=\u0022node\u0022 data-name=\u00226\u0022\u003E\u003Cpolygon points=\u0022262.5,91.5 262.5,55.5 419.25,55.5 419.25,91.5\u0022 stroke=\u0022#000000\u0022 fill=\u0022none\u0022 stroke-width=\u00221\u0022 /\u003E\u003Cpolyline points=\u0022315.25,91 315.25,55.5\u0022 stroke=\u0022#000000\u0022 fill=\u0022none\u0022 stroke-width=\u00221\u0022 /\u003E\u003Cpolyline points=\u0022368.75,91 368.75,55.5\u0022 stroke=\u0022#000000\u0022 fill=\u0022none\u0022 stroke-width=\u00221\u0022 /\u003E\u003Ctext x=\u0022288.88\u0022 y=\u002278.3\u0022 font-family=\u0022Times-Roman\u0022 font-size=\u002214\u0022 text-anchor=\u0022middle\u0022 fill=\u0022#000000\u0022\u003Ex1*w1\u003C/text\u003E\u003Ctext x=\u0022342\u0022 y=\u002278.3\u0022 font-family=\u0022Times-Roman\u0022 font-size=\u002214\u0022 text-anchor=\u0022middle\u0022 fill=\u0022#000000\u0022\u003Edata -6\u003C/text\u003E\u003Ctext x=\u0022394\u0022 y=\u002278.3\u0022 font-family=\u0022Times-Roman\u0022 font-size=\u002214\u0022 text-anchor=\u0022middle\u0022 fill=\u0022#000000\u0022\u003Egrad 0\u003C/text\u003E\u003C/g\u003E\u003Cg data-kind=\u0022node\u0022 data-name=\u00227\u0022\u003E\u003Cellipse cx=\u0022199.5\u0022 cy=\u002273.5\u0022 rx=\u002227\u0022 ry=\u002218\u0022 stroke=\u0022#000000\u0022 fill=\u0022none\u0022 stroke-width=\u00221\u0022 /\u003E\u003Ctext x=\u0022199.5\u0022 y=\u002278.55\u0022 font-family=\u0022Times-Roman\u0022 font-size=\u002214\u0022 text-anchor=\u0022middle\u0022 fill=\u0022#000000\u0022\u003E*\u003C/text\u003E\u003C/g\u003E\u003Cg data-kind=\u0022node\u0022 data-name=\u00228\u0022\u003E\u003Cpolygon points=\u00223.75,36.5 3.75,0.5 132.75,0.5 132.75,36.5\u0022 stroke=\u0022#000000\u0022 fill=\u0022none\u0022 stroke-width=\u00221\u0022 /\u003E\u003Cpolyline points=\u002233.25,36 33.25,0.5\u0022 stroke=\u0022#000000\u0022 fill=\u0022none\u0022 stroke-width=\u00221\u0022 /\u003E\u003Cpolyline points=\u002282.25,36 82.25,0.5\u0022 stroke=\u0022#000000\u0022 fill=\u0022none\u0022 stroke-width=\u00221\u0022 /\u003E\u003Ctext x=\u002218.5\u0022 y=\u002223.3\u0022 font-family=\u0022Times-Roman\u0022 font-size=\u002214\u0022 text-anchor=\u0022middle\u0022 fill=\u0022#000000\u0022\u003Ex1\u003C/text\u003E\u003Ctext x=\u002257.75\u0022 y=\u002223.3\u0022 font-family=\u0022Times-Roman\u0022 font-size=\u002214\u0022 text-anchor=\u0022middle\u0022 fill=\u0022#000000\u0022\u003Edata 2\u003C/text\u003E\u003Ctext x=\u0022107.5\u0022 y=\u002223.3\u0022 font-family=\u0022Times-Roman\u0022 font-size=\u002214\u0022 text-anchor=\u0022middle\u0022 fill=\u0022#000000\u0022\u003Egrad 0\u003C/text\u003E\u003C/g\u003E\u003Cg data-kind=\u0022node\u0022 data-name=\u00229\u0022\u003E\u003Cpolygon points=\u00220,91.5 0,55.5 136.5,55.5 136.5,91.5\u0022 stroke=\u0022#000000\u0022 fill=\u0022none\u0022 stroke-width=\u00221\u0022 /\u003E\u003Cpolyline points=\u002232.5,91 32.5,55.5\u0022 stroke=\u0022#000000\u0022 fill=\u0022none\u0022 stroke-width=\u00221\u0022 /\u003E\u003Cpolyline points=\u002286,91 86,55.5\u0022 stroke=\u0022#000000\u0022 fill=\u0022none\u0022 stroke-width=\u00221\u0022 /\u003E\u003Ctext x=\u002216.25\u0022 y=\u002278.3\u0022 font-family=\u0022Times-Roman\u0022 font-size=\u002214\u0022 text-anchor=\u0022middle\u0022 fill=\u0022#000000\u0022\u003Ew1\u003C/text\u003E\u003Ctext x=\u002259.25\u0022 y=\u002278.3\u0022 font-family=\u0022Times-Roman\u0022 font-size=\u002214\u0022 text-anchor=\u0022middle\u0022 fill=\u0022#000000\u0022\u003Edata -3\u003C/text\u003E\u003Ctext x=\u0022111.25\u0022 y=\u002278.3\u0022 font-family=\u0022Times-Roman\u0022 font-size=\u002214\u0022 text-anchor=\u0022middle\u0022 fill=\u0022#000000\u0022\u003Egrad 0\u003C/text\u003E\u003C/g\u003E\u003Cg data-kind=\u0022node\u0022 data-name=\u002210\u0022\u003E\u003Cpolygon points=\u0022264.75,146.5 264.75,110.5 417,110.5 417,146.5\u0022 stroke=\u0022#000000\u0022 fill=\u0022none\u0022 stroke-width=\u00221\u0022 /\u003E\u003Cpolyline points=\u0022317.5,146 317.5,110.5\u0022 stroke=\u0022#000000\u0022 fill=\u0022none\u0022 stroke-width=\u00221\u0022 /\u003E\u003Cpolyline points=\u0022366.5,146 366.5,110.5\u0022 stroke=\u0022#000000\u0022 fill=\u0022none\u0022 stroke-width=\u00221\u0022 /\u003E\u003Ctext x=\u0022291.12\u0022 y=\u0022133.3\u0022 font-family=\u0022Times-Roman\u0022 font-size=\u002214\u0022 text-anchor=\u0022middle\u0022 fill=\u0022#000000\u0022\u003Ex2*w2\u003C/text\u003E\u003Ctext x=\u0022342\u0022 y=\u0022133.3\u0022 font-family=\u0022Times-Roman\u0022 font-size=\u002214\u0022 text-anchor=\u0022middle\u0022 fill=\u0022#000000\u0022\u003Edata 0\u003C/text\u003E\u003Ctext x=\u0022391.75\u0022 y=\u0022133.3\u0022 font-family=\u0022Times-Roman\u0022 font-size=\u002214\u0022 text-anchor=\u0022middle\u0022 fill=\u0022#000000\u0022\u003Egrad 0\u003C/text\u003E\u003C/g\u003E\u003Cg data-kind=\u0022node\u0022 data-name=\u002211\u0022\u003E\u003Cellipse cx=\u0022199.5\u0022 cy=\u0022128.5\u0022 rx=\u002227\u0022 ry=\u002218\u0022 stroke=\u0022#000000\u0022 fill=\u0022none\u0022 stroke-width=\u00221\u0022 /\u003E\u003Ctext x=\u0022199.5\u0022 y=\u0022133.55\u0022 font-family=\u0022Times-Roman\u0022 font-size=\u002214\u0022 text-anchor=\u0022middle\u0022 fill=\u0022#000000\u0022\u003E*\u003C/text\u003E\u003C/g\u003E\u003Cg data-kind=\u0022node\u0022 data-name=\u002212\u0022\u003E\u003Cpolygon points=\u00223.75,146.5 3.75,110.5 132.75,110.5 132.75,146.5\u0022 stroke=\u0022#000000\u0022 fill=\u0022none\u0022 stroke-width=\u00221\u0022 /\u003E\u003Cpolyline points=\u002233.25,146 33.25,110.5\u0022 stroke=\u0022#000000\u0022 fill=\u0022none\u0022 stroke-width=\u00221\u0022 /\u003E\u003Cpolyline points=\u002282.25,146 82.25,110.5\u0022 stroke=\u0022#000000\u0022 fill=\u0022none\u0022 stroke-width=\u00221\u0022 /\u003E\u003Ctext x=\u002218.5\u0022 y=\u0022133.3\u0022 font-family=\u0022Times-Roman\u0022 font-size=\u002214\u0022 text-anchor=\u0022middle\u0022 fill=\u0022#000000\u0022\u003Ex2\u003C/text\u003E\u003Ctext x=\u002257.75\u0022 y=\u0022133.3\u0022 font-family=\u0022Times-Roman\u0022 font-size=\u002214\u0022 text-anchor=\u0022middle\u0022 fill=\u0022#000000\u0022\u003Edata 0\u003C/text\u003E\u003Ctext x=\u0022107.5\u0022 y=\u0022133.3\u0022 font-family=\u0022Times-Roman\u0022 font-size=\u002214\u0022 text-anchor=\u0022middle\u0022 fill=\u0022#000000\u0022\u003Egrad 0\u003C/text\u003E\u003C/g\u003E\u003Cg data-kind=\u0022node\u0022 data-name=\u002213\u0022\u003E\u003Cpolygon points=\u00222.25,201.5 2.25,165.5 134.25,165.5 134.25,201.5\u0022 stroke=\u0022#000000\u0022 fill=\u0022none\u0022 stroke-width=\u00221\u0022 /\u003E\u003Cpolyline points=\u002234.75,201 34.75,165.5\u0022 stroke=\u0022#000000\u0022 fill=\u0022none\u0022 stroke-width=\u00221\u0022 /\u003E\u003Cpolyline points=\u002283.75,201 83.75,165.5\u0022 stroke=\u0022#000000\u0022 fill=\u0022none\u0022 stroke-width=\u00221\u0022 /\u003E\u003Ctext x=\u002218.5\u0022 y=\u0022188.3\u0022 font-family=\u0022Times-Roman\u0022 font-size=\u002214\u0022 text-anchor=\u0022middle\u0022 fill=\u0022#000000\u0022\u003Ew2\u003C/text\u003E\u003Ctext x=\u002259.25\u0022 y=\u0022188.3\u0022 font-family=\u0022Times-Roman\u0022 font-size=\u002214\u0022 text-anchor=\u0022middle\u0022 fill=\u0022#000000\u0022\u003Edata 1\u003C/text\u003E\u003Ctext x=\u0022109\u0022 y=\u0022188.3\u0022 font-family=\u0022Times-Roman\u0022 font-size=\u002214\u0022 text-anchor=\u0022middle\u0022 fill=\u0022#000000\u0022\u003Egrad 0\u003C/text\u003E\u003C/g\u003E\u003Cg data-kind=\u0022node\u0022 data-name=\u002214\u0022\u003E\u003Cpolygon points=\u0022545.25,174.5 545.25,138.5 765.75,138.5 765.75,174.5\u0022 stroke=\u0022#000000\u0022 fill=\u0022none\u0022 stroke-width=\u00221\u0022 /\u003E\u003Cpolyline points=\u0022568,174 568,138.5\u0022 stroke=\u0022#000000\u0022 fill=\u0022none\u0022 stroke-width=\u00221\u0022 /\u003E\u003Cpolyline points=\u0022715.25,174 715.25,138.5\u0022 stroke=\u0022#000000\u0022 fill=\u0022none\u0022 stroke-width=\u00221\u0022 /\u003E\u003Ctext x=\u0022556.62\u0022 y=\u0022161.3\u0022 font-family=\u0022Times-Roman\u0022 font-size=\u002214\u0022 text-anchor=\u0022middle\u0022 fill=\u0022#000000\u0022\u003Eb\u003C/text\u003E\u003Ctext x=\u0022641.62\u0022 y=\u0022161.3\u0022 font-family=\u0022Times-Roman\u0022 font-size=\u002214\u0022 text-anchor=\u0022middle\u0022 fill=\u0022#000000\u0022\u003Edata 6.88137358701954\u003C/text\u003E\u003Ctext x=\u0022740.5\u0022 y=\u0022161.3\u0022 font-family=\u0022Times-Roman\u0022 font-size=\u002214\u0022 text-anchor=\u0022middle\u0022 fill=\u0022#000000\u0022\u003Egrad 0\u003C/text\u003E\u003C/g\u003E\u003Cg data-kind=\u0022edge\u0022 data-name=\u0022edge:0\u0022\u003E\u003Cpath d=\u0022M 1209.14 129.5 C 1216.23 129.5 1224.41 129.5 1233.2 129.5\u0022 stroke=\u0022#000000\u0022 fill=\u0022none\u0022 stroke-width=\u00221\u0022 /\u003E\u003Cpolygon points=\u00221233.11,126 1243.11,129.5 1233.11,133\u0022 stroke=\u0022#000000\u0022 fill=\u0022#000000\u0022 stroke-width=\u00221\u0022 /\u003E\u003C/g\u003E\u003Cg data-kind=\u0022edge\u0022 data-name=\u0022edge:1\u0022\u003E\u003Cpath d=\u0022M 1119.43 129.5 C 1127.85 129.5 1135.92 129.5 1143.28 129.5\u0022 stroke=\u0022#000000\u0022 fill=\u0022none\u0022 stroke-width=\u00221\u0022 /\u003E\u003Cpolygon points=\u00221143.07,126 1153.07,129.5 1143.07,133\u0022 stroke=\u0022#000000\u0022 fill=\u0022#000000\u0022 stroke-width=\u00221\u0022 /\u003E\u003C/g\u003E\u003Cg data-kind=\u0022edge\u0022 data-name=\u0022edge:2\u0022\u003E\u003Cpath d=\u0022M 855.89 129.5 C 862.98 129.5 871.16 129.5 879.95 129.5\u0022 stroke=\u0022#000000\u0022 fill=\u0022none\u0022 stroke-width=\u00221\u0022 /\u003E\u003Cpolygon points=\u0022879.86,126 889.86,129.5 879.86,133\u0022 stroke=\u0022#000000\u0022 fill=\u0022#000000\u0022 stroke-width=\u00221\u0022 /\u003E\u003C/g\u003E\u003Cg data-kind=\u0022edge\u0022 data-name=\u0022edge:3\u0022\u003E\u003Cpath d=\u0022M 760.56 118.51 C 771.39 120.29 781.81 121.99 791.08 123.5\u0022 stroke=\u0022#000000\u0022 fill=\u0022none\u0022 stroke-width=\u00221\u0022 /\u003E\u003Cpolygon points=\u0022791.35,120 800.66,125.07 790.22,126.91\u0022 stroke=\u0022#000000\u0022 fill=\u0022#000000\u0022 stroke-width=\u00221\u0022 /\u003E\u003C/g\u003E\u003Cg data-kind=\u0022edge\u0022 data-name=\u0022edge:4\u0022\u003E\u003Cpath d=\u0022M 509.63 101.5 C 518.29 101.5 528.53 101.5 539.5 101.5\u0022 stroke=\u0022#000000\u0022 fill=\u0022none\u0022 stroke-width=\u00221\u0022 /\u003E\u003Cpolygon points=\u0022539.17,98 549.17,101.5 539.17,105\u0022 stroke=\u0022#000000\u0022 fill=\u0022#000000\u0022 stroke-width=\u00221\u0022 /\u003E\u003C/g\u003E\u003Cg data-kind=\u0022edge\u0022 data-name=\u0022edge:5\u0022\u003E\u003Cpath d=\u0022M 419.71 89.14 C 428.41 90.88 436.93 92.6 444.73 94.16\u0022 stroke=\u0022#000000\u0022 fill=\u0022none\u0022 stroke-width=\u00221\u0022 /\u003E\u003Cpolygon points=\u0022445.35,90.72 454.46,96.12 443.97,97.58\u0022 stroke=\u0022#000000\u0022 fill=\u0022#000000\u0022 stroke-width=\u00221\u0022 /\u003E\u003C/g\u003E\u003Cg data-kind=\u0022edge\u0022 data-name=\u0022edge:6\u0022\u003E\u003Cpath d=\u0022M 226.72 73.5 C 233.84 73.5 241.98 73.5 250.55 73.5\u0022 stroke=\u0022#000000\u0022 fill=\u0022none\u0022 stroke-width=\u00221\u0022 /\u003E\u003Cpolygon points=\u0022250.5,70 260.5,73.5 250.5,77\u0022 stroke=\u0022#000000\u0022 fill=\u0022#000000\u0022 stroke-width=\u00221\u0022 /\u003E\u003C/g\u003E\u003Cg data-kind=\u0022edge\u0022 data-name=\u0022edge:7\u0022\u003E\u003Cpath d=\u0022M 116.02 36.98 C 122.91 39.79 129.9 42.69 136.5 45.5 C 146.29 49.67 156.87 54.38 166.47 58.72\u0022 stroke=\u0022#000000\u0022 fill=\u0022none\u0022 stroke-width=\u00221\u0022 /\u003E\u003Cpolygon points=\u0022167.77,55.47 175.42,62.8 164.86,61.84\u0022 stroke=\u0022#000000\u0022 fill=\u0022#000000\u0022 stroke-width=\u00221\u0022 /\u003E\u003C/g\u003E\u003Cg data-kind=\u0022edge\u0022 data-name=\u0022edge:8\u0022\u003E\u003Cpath d=\u0022M 136.9 73.5 C 145.16 73.5 153.35 73.5 160.94 73.5\u0022 stroke=\u0022#000000\u0022 fill=\u0022none\u0022 stroke-width=\u00221\u0022 /\u003E\u003Cpolygon points=\u0022160.76,70 170.76,73.5 160.76,77\u0022 stroke=\u0022#000000\u0022 fill=\u0022#000000\u0022 stroke-width=\u00221\u0022 /\u003E\u003C/g\u003E\u003Cg data-kind=\u0022edge\u0022 data-name=\u0022edge:9\u0022\u003E\u003Cpath d=\u0022M 417.27 113.89 C 426.89 112.03 436.35 110.2 444.94 108.53\u0022 stroke=\u0022#000000\u0022 fill=\u0022none\u0022 stroke-width=\u00221\u0022 /\u003E\u003Cpolygon points=\u0022444.05,105.14 454.54,106.67 445.39,112.01\u0022 stroke=\u0022#000000\u0022 fill=\u0022#000000\u0022 stroke-width=\u00221\u0022 /\u003E\u003C/g\u003E\u003Cg data-kind=\u0022edge\u0022 data-name=\u0022edge:10\u0022\u003E\u003Cpath d=\u0022M 226.72 128.5 C 234.54 128.5 243.57 128.5 253.06 128.5\u0022 stroke=\u0022#000000\u0022 fill=\u0022none\u0022 stroke-width=\u00221\u0022 /\u003E\u003Cpolygon points=\u0022252.85,125 262.85,128.5 252.85,132\u0022 stroke=\u0022#000000\u0022 fill=\u0022#000000\u0022 stroke-width=\u00221\u0022 /\u003E\u003C/g\u003E\u003Cg data-kind=\u0022edge\u0022 data-name=\u0022edge:11\u0022\u003E\u003Cpath d=\u0022M 133.12 128.5 C 142.65 128.5 152.2 128.5 160.95 128.5\u0022 stroke=\u0022#000000\u0022 fill=\u0022none\u0022 stroke-width=\u00221\u0022 /\u003E\u003Cpolygon points=\u0022160.78,125 170.78,128.5 160.78,132\u0022 stroke=\u0022#000000\u0022 fill=\u0022#000000\u0022 stroke-width=\u00221\u0022 /\u003E\u003C/g\u003E\u003Cg data-kind=\u0022edge\u0022 data-name=\u0022edge:12\u0022\u003E\u003Cpath d=\u0022M 116.02 165.02 C 122.91 162.21 129.9 159.31 136.5 156.5 C 146.29 152.33 156.87 147.62 166.47 143.28\u0022 stroke=\u0022#000000\u0022 fill=\u0022none\u0022 stroke-width=\u00221\u0022 /\u003E\u003Cpolygon points=\u0022164.86,140.16 175.42,139.2 167.77,146.53\u0022 stroke=\u0022#000000\u0022 fill=\u0022#000000\u0022 stroke-width=\u00221\u0022 /\u003E\u003C/g\u003E\u003Cg data-kind=\u0022edge\u0022 data-name=\u0022edge:13\u0022\u003E\u003Cpath d=\u0022M 765.92 139.25 C 774.7 137.86 783.11 136.54 790.75 135.33\u0022 stroke=\u0022#000000\u0022 fill=\u0022none\u0022 stroke-width=\u00221\u0022 /\u003E\u003Cpolygon points=\u0022790.15,131.89 800.57,133.79 791.24,138.8\u0022 stroke=\u0022#000000\u0022 fill=\u0022#000000\u0022 stroke-width=\u00221\u0022 /\u003E\u003C/g\u003E\u003C/g\u003E\u003C/svg\u003E"
-        }
-      ]
+      "source": "$x = @(\n    [Value]::new(2.0, 'x1')\n    [Value]::new(3.0, 'x2')\n    [Value]::new(-1.0, 'x3')\n)\n\n$layer = [Layer]::new(3, 4)\n$layer.Invoke($x)",
+      "outputs": []
+    },
+    {
+      "id": "2f31397a-8ec1-4478-b4f7-a4dd66e93963",
+      "type": "code",
+      "language": "powershell",
+      "source": "$net = [MLP]::new(3, @(4, 4, 1))\n$res = $net.Invoke($x)\n$res",
+      "outputs": []
+    },
+    {
+      "id": "280b150c-e2eb-472d-a2fe-261ceeb41292",
+      "type": "code",
+      "language": "powershell",
+      "source": "$netGraph = New-ExpressionGraph -val $res[0]\nShow-ExpressionGraph -Graph $netGraph -rankdir 'TD' ",
+      "outputs": []
+    },
+    {
+      "id": "64896558-4a50-44b5-8c76-33b6955a7184",
+      "type": "markdown",
+      "source": "## Training Data and Loss\n\nThe training set is the small dataset from the micrograd walkthrough. The loss is the sum of squared errors between target labels and predictions.",
+      "outputs": []
+    },
+    {
+      "id": "a13c19a1-36e5-4ad1-951e-b79f7a5fc259",
+      "type": "code",
+      "language": "powershell",
+      "source": "$xs = @(\n    @([Value]::new(2.0, 'x11'), [Value]::new( 3.0, 'x12'), [Value]::new(-1.0, 'x13')),\n    @([Value]::new(3.0, 'x21'), [Value]::new(-1.0, 'x22'), [Value]::new( 0.5, 'x23')),\n    @([Value]::new(0.5, 'x31'), [Value]::new( 1.0, 'x32'), [Value]::new( 1.0, 'x33')),\n    @([Value]::new(1.0, 'x41'), [Value]::new( 1.0, 'x42'), [Value]::new(-1.0, 'x43'))\n)\n\n$ys = @(\n    [Value]::new( 1.0, 'y1'),\n    [Value]::new(-1.0, 'y2'),\n    [Value]::new(-1.0, 'y3'),\n    [Value]::new( 1.0, 'y4')\n)\n\n$net = [MLP]::new(3, @(4, 4, 1))\n\n$ypred = $xs | ForEach-Object { $net.Invoke($_)[0] }\n$loss = Zip -Left $ys -Right $ypred | Sum-Value {\n    $diff = $_.Right - $_.Left\n    $diff * $diff\n}\n\n$ypred\n$loss",
+      "outputs": []
+    },
+    {
+      "id": "e137ad0d-eaf9-4125-886e-f445d9e0c224",
+      "type": "markdown",
+      "source": "## One Training Step\n\nEach step follows the same pattern as PyTorch: clear gradients, run the forward pass, build the loss, run backpropagation in reverse topological order, then update parameters.",
+      "outputs": []
+    },
+    {
+      "id": "4fddcb91-1fc6-4d1a-af61-d40433ee2418",
+      "type": "code",
+      "language": "powershell",
+      "source": "foreach ($p in $net.parameters()) {\n    $p.grad = 0.0\n}\nforeach ($row in $xs) {\n    foreach ($v in $row) { $v.grad = 0.0 }\n}\nforeach ($y in $ys) {\n    $y.grad = 0.0\n}\n\n$ypred = $xs | ForEach-Object { $net.Invoke($_)[0] }\n$loss = Zip -Left $ys -Right $ypred | Sum-Value {\n    $diff = $_.Right - $_.Left\n    $diff * $diff\n}\n\n$loss.grad = 1.0\n$bpLossGraph = New-BackpropagationGraph -val $loss\n\nGet-GraphTopologicalSort -Graph $bpLossGraph -Reverse |\n    ForEach-Object { $_.OriginalObject } |\n    ForEach-Object { & $_.backward }\n\nforeach ($p in $net.parameters()) {\n    $p.data += -0.1 * $p.grad\n}\n\n$ypred = $xs | ForEach-Object { $net.Invoke($_)[0] }\n$loss = Zip -Left $ys -Right $ypred | Sum-Value {\n    $diff = $_.Right - $_.Left\n    $diff * $diff\n}\n\n$ypred\n$loss",
+      "outputs": []
+    },
+    {
+      "id": "0d8ebd3a-dd25-4662-ae18-67d8b6751d14",
+      "type": "markdown",
+      "source": "## Training Loop\n\nRepeat the same step to fit the tiny dataset. The final predictions should move toward the target signs, and the loss should shrink.",
+      "outputs": []
+    },
+    {
+      "id": "dd473439-856e-4f2f-96c4-e5cd3debd34b",
+      "type": "code",
+      "language": "powershell",
+      "source": "$ypred = @()\n$loss = [Value]::new(0.0, 'loss')\n\n1..200 | ForEach-Object {\n    foreach ($p in $net.parameters()) { $p.grad = 0.0 }\n    foreach ($row in $xs) { foreach ($v in $row) { $v.grad = 0.0 } }\n    foreach ($y in $ys) { $y.grad = 0.0 }\n\n    $ypred = $xs | ForEach-Object { $net.Invoke($_)[0] }\n    $loss = Zip -Left $ys -Right $ypred | Sum-Value {\n        $diff = $_.Right - $_.Left\n        $diff * $diff\n    }\n\n    $loss.grad = 1.0\n    $bpLossGraph = New-BackpropagationGraph -val $loss\n\n    Get-GraphTopologicalSort -Graph $bpLossGraph -Reverse |\n        ForEach-Object { $_.OriginalObject } |\n        ForEach-Object { & $_.backward }\n\n    foreach ($p in $net.parameters()) {\n        $p.data += -0.1 * $p.grad\n    }\n}\n\n$ypred = $xs | ForEach-Object { $net.Invoke($_)[0] }\n$loss = Zip -Left $ys -Right $ypred | Sum-Value {\n    $diff = $_.Right - $_.Left\n    $diff * $diff\n}\n\n$ypred\n$loss",
+      "outputs": []
+    },
+    {
+      "id": "a096e010-2ed5-4324-b580-9f61bd58ef8d",
+      "type": "markdown",
+      "source": "## Final Loss Graph\n\nRender the final loss graph after training. This graph is intentionally large because it contains the full computation that produced the scalar loss.",
+      "outputs": []
+    },
+    {
+      "id": "ec5c879c-0de0-4760-a294-a390d5d67f77",
+      "type": "code",
+      "language": "powershell",
+      "source": "$lossGraph = New-ExpressionGraph -val $loss\nShow-ExpressionGraph -Graph $lossGraph -rankdir 'TD' ",
+      "outputs": []
     }
   ],
   "layouts": {
