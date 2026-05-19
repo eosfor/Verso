@@ -18,24 +18,14 @@
     {
       "id": "10897b83-f777-43a3-a85c-d5719da8dd1d",
       "type": "markdown",
-      "source": "## Module Setup\n\nUse the local setup cell for repository testing; it imports module manifests from this workspace's `PSGraph/artifacts/local-modules` folder. Use the installed setup cell in a fresh kernel when `PSQuickGraph` and `PSGraphView` are already installed in the normal PowerShell module path.\n\nPowerShell binary modules load .NET assemblies into the runspace process. If one copy of `PSGraph.dll` is already loaded, restart the kernel before switching between local and installed module sources.",
-      "outputs": []
-    },
-    {
-      "id": "ff7f6f07-7f73-4baa-947c-bb0b3712a056",
-      "type": "code",
-      "language": "powershell",
-      "source": "$ErrorActionPreference = 'Stop'\n\n$loadedPSGraphAssembly = [AppDomain]::CurrentDomain.GetAssemblies() |\n    Where-Object { $_.GetName().Name -eq 'PSGraph' } |\n    Select-Object -First 1\n\nif ($loadedPSGraphAssembly) {\n    Write-Warning 'PSGraph.dll is already loaded. Restart the kernel before switching module sources.'\n    Get-Module PSQuickGraph, PSGraphView | Select-Object Name, Version, ModuleBase\n}\nelse {\n    $workspaceRoot = Resolve-Path (Join-Path (Get-Location) '../../../../..')\n    $repoRoot = Join-Path $workspaceRoot 'PSGraph'\n\n    $psQuickGraphManifest = Join-Path $repoRoot 'artifacts/local-modules/PSQuickGraph/PSQuickGraph.psd1'\n    $psGraphViewManifest = Join-Path $repoRoot 'artifacts/local-modules/PSGraphView/PSGraphView.psd1'\n\n    if (-not (Test-Path -LiteralPath $psQuickGraphManifest)) {\n        throw \"PSQuickGraph local manifest not found: $psQuickGraphManifest\"\n    }\n\n    if (-not (Test-Path -LiteralPath $psGraphViewManifest)) {\n        throw \"PSGraphView local manifest not found: $psGraphViewManifest\"\n    }\n\n    Remove-Module PSQuickGraph, PSGraphView -ErrorAction SilentlyContinue\n    Import-Module $psQuickGraphManifest -Force\n    Import-Module $psGraphViewManifest -Force\n\n    Get-Module PSQuickGraph, PSGraphView |\n        Select-Object Name, Version, ModuleBase\n}",
-      "metadata": {
-        "verso:ui.inputCollapsed": true
-      },
+      "source": "## Module Setup\n\nLoad `PSQuickGraph` and `PSGraphView` from the normal PowerShell module path.",
       "outputs": []
     },
     {
       "id": "92379945-af96-4131-a373-7f8fc66bcc7e",
       "type": "code",
       "language": "powershell",
-      "source": "$ErrorActionPreference = 'Stop'\n\n$loadedPSGraphAssembly = [AppDomain]::CurrentDomain.GetAssemblies() |\n    Where-Object { $_.GetName().Name -eq 'PSGraph' } |\n    Select-Object -First 1\n\nif ($loadedPSGraphAssembly) {\n    Write-Warning 'PSGraph.dll is already loaded. Restart the kernel before switching module sources.'\n    Get-Module PSQuickGraph, PSGraphView | Select-Object Name, Version, ModuleBase\n}\nelse {\n    Remove-Module PSQuickGraph, PSGraphView -ErrorAction SilentlyContinue\n    Import-Module PSQuickGraph -Force\n    Import-Module PSGraphView -Force\n\n    Get-Module PSQuickGraph, PSGraphView |\n        Select-Object Name, Version, ModuleBase\n}",
+      "source": "Import-Module PSQuickGraph\nImport-Module PSGraphView",
       "outputs": []
     },
     {

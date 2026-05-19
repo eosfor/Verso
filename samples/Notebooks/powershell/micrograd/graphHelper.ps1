@@ -1,3 +1,6 @@
+#Requires -Modules @{ ModuleName = 'PSQuickGraph'; ModuleVersion = '2.5.0' }
+#Requires -Modules @{ ModuleName = 'PSGraphView'; ModuleVersion = '0.1.0' }
+
 function New-ValueNode([Value]$value) {
     [pscustomobject]@{
         kind  = 'value'
